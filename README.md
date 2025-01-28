@@ -18,7 +18,7 @@ Not tested on Mac, only on Linux.
   * MySQL - db for most app data
   * PostgreSQL - db for metadata edits and updating the master list through the [launcher](https://github.com/FlashpointProject/launcher)
   * [Validator](https://github.com/FlashpointProject/Curation-Validation-Bot) - validates uploads and post about them on Discord
-  
+
 Optionally, also run the [archive indexer](https://github.com/Dri0m/recursive-archive-indexer) if you want to upload stuff to what's called Flashfreeze.
 
 ## Setting up the environment
@@ -36,9 +36,11 @@ Optionally, also run the [archive indexer](https://github.com/Dri0m/recursive-ar
 
 Live-reloading can be optionally added by starting the application with [Gin](https://github.com/codegangsta/gin) (`go install github.com/codegangsta/gin@latest`) instead of `go run`:
 ```shell
-GIN_PORT=8730 GIT_COMMIT=deadbeef gin --build ./main/ run ./main/main.go 
+GIN_PORT=8730 GIT_COMMIT=deadbeef gin --build ./main/ run ./main/main.go
 ```
 The command has to be run from the root directory. `GIN_PORT` is equal to the PORT defined in `.env` file. Now you can visit `http://127.0.0.1:3000`
+
+If you want to use **devcontainer** you can follow the steps as in the readme of the `.devcontainer` folder.
 
 ### Database migrations
 To add a new migration, add a migration for both up & down to the `migration` and `postgres_migration` directories. The filename of the migration must start with a (version) number higher than the previous migration, for example `0002_primary_platform.down.sql`.
@@ -62,11 +64,11 @@ These variables are used in the .env file:
 * `FLASHPOINT_SERVER_ID` - the server ID you copied from your own private server
 
 ##### Discord bot
-Create a new Discord bot (you may use the same application created for OAuth2) and click the "Reset token" button to get the private token for the bot. Do not share this token with anyone.
+Create a new Discord bot (you may use the same application created for OAuth2).
 
 Open the .env file to update the following:
 
-* `AUTH_BOT_TOKEN` - token from the previous step, if you're using a single app
+* `AUTH_BOT_TOKEN` - get it from the Discord website using the "Reset Token" button under the "Bot" tab, do not share this
 * `NOTIFICATION_BOT_TOKEN` - same as the previous one
 * `NOTIFICATION_CHANNEL_ID` - the ID you copied for the `notifications` channel
 * `CURATION_FEED_CHANNEL_ID` - the ID you copied for the `curation-feed` channel

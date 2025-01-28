@@ -1,0 +1,86 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/go-postgres
+{
+    "name": "golang",
+    "dockerComposeFile": [
+        "../dc-db.yml", // Docker Compose will use the first docker-compose file for resolving relative paths.d
+        "docker-compose.yml"
+    ],
+    "service": "dev",
+    "initializeCommand": "bash ./.devcontainer/postInitCommand.sh",
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+    "remoteUser": "vscode",
+    "shutdownAction": "stopCompose",
+    "mounts": [
+        "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock,consistency=consistent"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "ms-azuretools.vscode-docker", // Docker integration and linting
+                "shardulm94.trailing-spaces", // Show trailing spaces
+                "Gruntfuggly.todo-tree", // Highlights TODO comments
+                "vscode-icons-team.vscode-icons", // Better file extension icons
+                "github.vscode-pull-request-github", // Github interaction
+                "redhat.vscode-yaml", // Kubernetes, Drone syntax highlighting
+                "mtxr.sqltools", // Supports connections to databases,
+                "mtxr.sqltools-driver-mysql", // MySQL driver for SQLTools
+                "mtxr.sqltools-driver-pg", // PostgreSQL driver for SQLTools
+                "IBM.output-colorizer", // Colorize your output/test logs
+                "github.copilot", // AI code completion,
+                "yzhang.markdown-all-in-one", // Markdown preview
+                "eamodio.gitlens" // Better git integration
+            ],
+            "settings": {
+                "files.eol": "\n",
+                "editor.formatOnSave": true,
+                "go.buildTags": "",
+                "go.toolsEnvVars": {
+                    "CGO_ENABLED": "0"
+                },
+                "go.useLanguageServer": true,
+                "go.testEnvVars": {
+                    "CGO_ENABLED": "1"
+                },
+                "go.testFlags": [
+                    "-v",
+                    "-race"
+                ],
+                "go.testTimeout": "10s",
+                "go.coverOnSingleTest": true,
+                "go.coverOnSingleTestFile": true,
+                "go.coverOnTestPackage": true,
+                "go.lintTool": "golangci-lint",
+                "go.lintOnSave": "package",
+                "[go]": {
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports": "always"
+                    }
+                },
+                "gopls": {
+                    "usePlaceholders": false,
+                    "staticcheck": true,
+                    "formatting.gofumpt": true
+                },
+                "remote.extensionKind": {
+                    "ms-azuretools.vscode-docker": "workspace"
+                }
+            }
+        }
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+        "ghcr.io/devcontainers/features/go:1": {},
+    }
+}
+// Features to add to the dev container. More info: https://containers.dev/features.
+// "features": {},
+// Configure tool-specific properties.
+// "customizations": {},
+// Use 'forwardPorts' to make a list of ports inside the container available locally.
+// "forwardPorts": [5432],
+// Use 'postCreateCommand' to run commands after the container is created.
+// "postCreateCommand": "go version",
+// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+// "remoteUser": "root"
