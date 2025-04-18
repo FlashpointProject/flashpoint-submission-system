@@ -396,6 +396,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "2002-08-07"
                 },
+                "ruffle_support": {
+                    "type": "string",
+                    "example": "Standalone"
+                },
                 "series": {
                     "type": "string",
                     "example": ""

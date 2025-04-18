@@ -1,61 +1,6 @@
--- Disable and enable triggers
-SET session_replication_role = replica;
-SET session_replication_role = DEFAULT;
-
--- Rebuild platform strings
-
----- Dry Run
-
-SELECT COUNT(*) as rows_that_would_change
-FROM game
-LEFT JOIN (
-    SELECT game_id,
-           string_agg((SELECT primary_alias FROM platform WHERE id = p.platform_id), '; ') AS new_platforms_str
-    FROM game_platforms_platform p
-    GROUP BY game_id
-) subquery ON game.id = subquery.game_id
-WHERE (game.platforms_str IS DISTINCT FROM subquery.new_platforms_str
-       OR (game.platforms_str IS NULL AND subquery.new_platforms_str IS NOT NULL)
-       OR (game.platforms_str IS NOT NULL AND subquery.new_platforms_str IS NULL));
-
---- Live Run
-
-UPDATE game
-SET platforms_str = new_platforms_str,
-reason = 'Rebuild Platforms String',
-user_id = 810112564787675166
-FROM (
-    SELECT id,
-           string_agg((SELECT primary_alias FROM platform WHERE id = p.platform_id), '; ') AS new_platforms_str
-    FROM game
-    LEFT JOIN game_platforms_platform p ON p.game_id = game.id
-    GROUP BY game.id
-) subquery
-WHERE game.id = subquery.id
-  AND (game.platforms_str IS DISTINCT FROM subquery.new_platforms_str
-       OR (game.platforms_str IS NULL AND subquery.new_platforms_str IS NOT NULL)
-       OR (game.platforms_str IS NOT NULL AND subquery.new_platforms_str IS NULL));
-
--- Rebuild tag strings
-
--- TODO: Make sure to only update necessary rows
-
-UPDATE game
-SET tags_str = coalesce(
-    (
-        SELECT string_agg(
-                       (SELECT primary_alias FROM tag WHERE id = t.tag_id), '; '
-                   )
-        FROM game_tags_tag t
-        WHERE t.game_id = game.id
-    ), ''
-) WHERE 1=1
-
--- Modifications
-
-\set app_path 'FPSoftware\\startBioPlayer.bat'
+\set app_path 'FPSoftware\\startXaraPlugin.bat'
 \set new_app_path 'FPSoftware\\FlashpointSecurePlayer.exe'
-\set prefix 'bioplayer'
+\set prefix 'xara'
 
 --- Paths
 
@@ -127,3 +72,39 @@ SET application_path = :'new_app_path',
     user_id = 810112564787675166
 WHERE application_path = :'app_path'
 AND launch_command LIKE :'prefix' || '%';
+
+--- Platform aliases
+
+\set old_platform 'Babyz Player'
+\set new_platform 'Babyz'
+
+SELECT * FROM platform WHERE primary_alias = :'old_platform';
+
+INSERT INTO platform_alias (name, platform_id) 
+  VALUES (:'new_platform', (SELECT id FROM platform WHERE primary_alias = :'old_platform'));
+
+UPDATE platform
+  SET primary_alias = :'new_platform',
+  reason = 'Update Platform Alias',
+  user_id = 810112564787675166
+  WHERE id = (SELECT id FROM platform WHERE primary_alias = :'old_platform');
+
+UPDATE game
+  SET platform_name = :'new_platform',
+    reason = 'Update Platform',
+    user_id = 810112564787675166
+  WHERE platform_name = :'old_platform';
+
+-- Migrate basilisk
+
+WITH updated_game_data AS (
+  UPDATE game_data
+  SET application_path = E'FPSoftware\\fpnavigator-portable\\FPNavigator.exe'
+  WHERE application_path = E'FPSoftware\\Basilisk-Portable\\Basilisk-Portable.exe'
+  RETURNING game_id
+)
+UPDATE game
+SET reason = 'Migrate Basilisk to FPNavigator',
+    user_id = 810112564787675166
+FROM updated_game_data
+WHERE game.id = updated_game_data.game_id;

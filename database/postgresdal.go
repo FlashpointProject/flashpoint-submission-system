@@ -1496,7 +1496,7 @@ func (d *postgresDAL) ApplyGamePatch(dbs PGDBSession, uid int64, game *types.Gam
 		SET title = $1, alternate_titles = $2, series = $3, developer = $4, publisher = $5,
 		    play_mode = $6, status = $7, notes = $8, source = $9, release_date = $10,
 		    version = $11, original_description = $12, language = $13, library = $14,
-			ruffle_support = $15
+			ruffle_support = $15,
 		    action = 'update', reason = 'Content Patch Metadata', user_id = $16
 		    WHERE id = $17`,
 		game.Title, game.AlternateTitles, game.Series, game.Developer, game.Publisher,

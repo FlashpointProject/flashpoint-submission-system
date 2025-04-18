@@ -123,6 +123,9 @@ definitions:
       release_date:
         example: "2002-08-07"
         type: string
+      ruffle_support:
+        example: Standalone
+        type: string
       series:
         example: ""
         type: string

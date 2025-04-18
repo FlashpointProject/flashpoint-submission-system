@@ -109,7 +109,7 @@ const (
 )
 
 func GetValidDeleteReasons() []string {
-	return []string{"Duplicate", "Owner Request", "Still On Sale", "Blacklisted Content"}
+	return []string{"Duplicate", "Owner Request", "Still On Sale", "Blacklisted Content", "Out of Scope"}
 }
 
 func GetValidRestoreReasons() []string {
