@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +25,316 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"golang.org/x/sync/errgroup"
 )
+
+func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, filename string, filesize int64, uid int64, sid int64, submissionLevel string) error {
+	imageFilePaths := make([]string, 0)
+
+	cleanup := func() {
+		for _, fp := range imageFilePaths {
+			utils.LogCtx(ctx).Debugf("cleaning up image file '%s'...", fp)
+			if err := os.Remove(fp); err != nil {
+				utils.LogCtx(ctx).Error(err)
+			}
+		}
+	}
+
+	utils.LogCtx(ctx).Debugf("received a meta updated file '%s' - %d bytes", filename, filesize)
+
+	var destinationFilename string
+	var destinationFilePath string
+
+	ext := filepath.Ext(filename)
+
+	for {
+		destinationFilename = s.randomStringProvider.RandomString(64) + ext
+		destinationFilePath = fmt.Sprintf("%s/%s", s.submissionsDir, destinationFilename)
+		if !utils.FileExists(destinationFilePath) {
+			break
+		}
+	}
+
+	err := utils.CopyFile(filename, destinationFilePath)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return fmt.Errorf("error moving edited file to subs directory: %s", err.Error())
+	}
+
+	err = func() error {
+		vr, err := s.validator.ProvideArchiveForValidation(destinationFilePath)
+		if err != nil {
+			utils.LogCtx(ctx).Error(err)
+			return fmt.Errorf("validator bot: %s", err.Error())
+		}
+		if vr.CurationErrors != nil {
+			for _, curError := range vr.CurationErrors {
+				if curError == "Contains blacklisted tags" {
+					utils.LogCtx(ctx).Error(curError)
+					return fmt.Errorf("validator bot: %s", curError)
+				}
+			}
+		}
+
+		md5sum := md5.New()
+		sha256sum := sha256.New()
+
+		writer := io.MultiWriter(md5sum, sha256sum)
+		file, err := os.Open(destinationFilePath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		_, err = io.Copy(writer, file)
+		if err != nil {
+			return fmt.Errorf("failed to hash file: %s", err)
+		}
+
+		if err := s.createNotification(dbs, uid, sid, constants.ActionEditMeta); err != nil {
+			return fmt.Errorf("failed to create comment: %s", err)
+		}
+
+		ifp, err := s._handleSubmissionFileUpdate(ctx, dbs, pgdbs, "meta-edit.pack", destinationFilename, filesize, uid, sid, submissionLevel, vr, md5sum, sha256sum, false)
+		if ifp != nil {
+			imageFilePaths = append(imageFilePaths, *ifp...)
+		}
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}()
+
+	if err != nil {
+		cleanup()
+		return err
+	}
+
+	return nil
+}
+
+func (s *SiteService) _handleSubmissionFileUpdate(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, origFilename string, filename string, filesize int64, uid int64, submissionID int64,
+	submissionLevel string, vr *types.ValidatorResponse, md5sum hash.Hash, sha256sum hash.Hash, isSubmissionNew bool) (*[]string, error) {
+	// subscribe the author
+	if err := s.dal.SubscribeUserToSubmission(dbs, uid, submissionID); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	isAudition := submissionLevel == constants.SubmissionLevelAudition
+
+	// also subscribe all those that want to subscribe to new audition uploads
+	if isSubmissionNew && isAudition {
+		auditionSubscribeUserIDs, err := s.dal.GetUsersForUniversalNotification(dbs, uid, constants.ActionAuditionSubscribe)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, dberr(err)
+		}
+
+		for _, subUID := range auditionSubscribeUserIDs {
+			if err := s.dal.SubscribeUserToSubmission(dbs, subUID, submissionID); err != nil {
+				utils.LogCtx(ctx).Error(err)
+				return nil, dberr(err)
+			}
+		}
+	}
+
+	sf := &types.SubmissionFile{
+		SubmissionID:     submissionID,
+		SubmitterID:      uid,
+		OriginalFilename: origFilename,
+		CurrentFilename:  filename,
+		Size:             filesize,
+		UploadedAt:       s.clock.Now(),
+		MD5Sum:           hex.EncodeToString(md5sum.Sum(nil)),
+		SHA256Sum:        hex.EncodeToString(sha256sum.Sum(nil)),
+	}
+
+	fid, err := s.dal.StoreSubmissionFile(dbs, sf)
+	if err != nil {
+		me, ok := err.(*mysql.MySQLError)
+		if ok {
+			if me.Number == 1062 {
+				msg := fmt.Sprintf("file '%s' with checksums md5:%s sha256:%s already present in the DB", filename, sf.MD5Sum, sf.SHA256Sum)
+				return nil, perr(msg, http.StatusConflict)
+			}
+		}
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	utils.LogCtx(ctx).Debug("storing submission comment...")
+
+	action := constants.ActionUpload
+	if origFilename == "meta-edit.pack" {
+		action = constants.ActionEditMeta
+	}
+
+	c := &types.Comment{
+		AuthorID:     uid,
+		SubmissionID: submissionID,
+		Message:      nil,
+		Action:       action,
+		CreatedAt:    s.clock.Now(),
+	}
+
+	cid, err := s.dal.StoreComment(dbs, c)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+	if err := s.EmitSubmissionCommentEvent(pgdbs, c.AuthorID, c.SubmissionID, cid, c.Action, &fid); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	utils.LogCtx(ctx).Debug("processing curation meta...")
+
+	if vr.IsExtreme {
+		yes := "Yes"
+		vr.Meta.Extreme = &yes
+	} else {
+		no := "No"
+		vr.Meta.Extreme = &no
+	}
+
+	vr.Meta.SubmissionID = submissionID
+	vr.Meta.SubmissionFileID = fid
+
+	if err := s.dal.StoreCurationMeta(dbs, &vr.Meta); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	// feed the curation feed
+	isCurationValid := len(vr.CurationErrors) == 0 && len(vr.CurationWarnings) == 0
+
+	// do not create notification if the only problem is the freezer
+	if len(vr.CurationErrors) == 0 && len(vr.CurationWarnings) == 1 && strings.Contains(vr.CurationWarnings[0], "Curation should be frozen") {
+		isCurationValid = true
+	}
+
+	// determine if we should autofreeze the submission
+	shouldAutofreeze := false
+	warningIndex := 0
+	warning := ""
+
+	for warningIndex, warning = range vr.CurationWarnings {
+		if strings.Contains(warning, "Curation should be frozen") {
+			shouldAutofreeze = true
+			break
+		}
+	}
+
+	if err := s.dal.UpdateSubmissionAutofreeze(dbs, submissionID, shouldAutofreeze); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	// remove freezer warning from the validator response
+	if len(vr.CurationWarnings) > 0 {
+		vr.CurationWarnings = append(vr.CurationWarnings[:warningIndex], vr.CurationWarnings[warningIndex+1:]...)
+	}
+
+	if err := s.createCurationFeedMessage(dbs, uid, submissionID, isSubmissionNew, isCurationValid, &vr.Meta, isAudition); err != nil {
+		return nil, dberr(err)
+	}
+
+	errs, ectx := errgroup.WithContext(ctx)
+
+	// save images
+	imageFilePaths := make([]string, 0, len(vr.Images))
+	cis := make([]*types.CurationImage, 0, len(vr.Images))
+
+	errs.Go(func() error {
+		utils.LogCtx(ectx).Debug("processing meta images in goroutine")
+		for _, image := range vr.Images {
+			imageData, err := base64.StdEncoding.DecodeString(image.Data)
+			if err != nil {
+				return err
+			}
+
+			var imageFilename string
+			var imageFilenameFilePath string
+			for {
+				imageFilename = s.randomStringProvider.RandomString(64)
+				imageFilenameFilePath = fmt.Sprintf("%s/%s", s.submissionImagesDir, imageFilename)
+				if !utils.FileExists(imageFilenameFilePath) {
+					break
+				}
+			}
+
+			imageFilePaths = append(imageFilePaths, imageFilenameFilePath)
+
+			if err := ioutil.WriteFile(imageFilenameFilePath, imageData, 0644); err != nil {
+				return err
+			}
+
+			ci := &types.CurationImage{
+				SubmissionFileID: fid,
+				Type:             image.Type,
+				Filename:         imageFilename,
+			}
+
+			cis = append(cis, ci)
+		}
+		utils.LogCtx(ectx).Debug("meta images processed in goroutine")
+		return nil
+	})
+
+	if err := errs.Wait(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, err
+	}
+
+	for _, ci := range cis {
+		if _, err := s.dal.StoreCurationImage(dbs, ci); err != nil {
+			utils.LogCtx(ctx).Error(err)
+			return &imageFilePaths, dberr(err)
+		}
+	}
+
+	// system comment for missing release date
+	if vr.Meta.ReleaseDate == nil {
+		msg := "The submission is missing release date. Please check if the release date is really unknown."
+		sc2 := &types.Comment{
+			AuthorID:     constants.SystemID,
+			SubmissionID: submissionID,
+			Message:      &msg,
+			Action:       constants.ActionSystem,
+			CreatedAt:    s.clock.Now().Add(time.Second * 2),
+		}
+
+		cid, err := s.dal.StoreComment(dbs, sc2)
+		if err != nil {
+			utils.LogCtx(ctx).Error(err)
+			return nil, dberr(err)
+		}
+		if err := s.EmitSubmissionCommentEvent(pgdbs, sc2.AuthorID, sc2.SubmissionID, cid, sc2.Action, &fid); err != nil {
+			utils.LogCtx(ctx).Error(err)
+			return nil, dberr(err)
+		}
+	}
+
+	utils.LogCtx(ctx).Debug("processing bot event...")
+
+	bc := s.convertValidatorResponseToComment(vr, shouldAutofreeze)
+	cid, err = s.dal.StoreComment(dbs, bc)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+	if err := s.EmitSubmissionCommentEvent(pgdbs, bc.AuthorID, bc.SubmissionID, cid, bc.Action, &fid); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	if err := s.dal.UpdateSubmissionCacheTable(dbs, submissionID); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	return &imageFilePaths, nil
+}
 
 func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, fileReadCloserProvider resumableuploadservice.ReadCloserInformerProvider, filename string, filesize int64, sid *int64, submissionLevel string, tempName string) (*string, []string, int64, error) {
 	uid := utils.UserID(ctx)

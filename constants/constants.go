@@ -10,6 +10,7 @@ const (
 	ActionRequestChanges       = "request-changes"
 	ActionMarkAdded            = "mark-added"
 	ActionUpload               = "upload-file"
+	ActionEditMeta             = "edit-meta"
 	ActionVerify               = "verify"
 	ActionAssignTesting        = "assign-testing"
 	ActionUnassignTesting      = "unassign-testing"
@@ -59,6 +60,7 @@ func GetActionsWithNotification() []string {
 		ActionMarkAdded,
 		ActionUpload,
 		ActionReject,
+		ActionEditMeta,
 	}
 }
 

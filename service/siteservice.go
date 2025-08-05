@@ -815,6 +815,136 @@ func (s *SiteService) GetApplyContentPatchPageData(ctx context.Context, sid int6
 	return pageData, nil
 }
 
+func (s *SiteService) GetEditSubmissionPageData(ctx context.Context, sid int64) (*types.EditSubmissionPageData, error) {
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+	defer dbs.Rollback()
+
+	bpd, err := s.GetBasePageData(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := &types.SubmissionsFilter{
+		SubmissionIDs: []int64{sid},
+	}
+
+	submissions, _, err := s.dal.SearchSubmissions(dbs, filter)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	if len(submissions) == 0 {
+		return nil, perr("submission not found", http.StatusNotFound)
+	}
+
+	submission := submissions[0]
+
+	meta, err := s.dal.GetCurationMetaBySubmissionFileID(dbs, submission.FileID)
+	if err != nil && err != sql.ErrNoRows {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	pageData := &types.EditSubmissionPageData{
+		BasePageData: *bpd,
+		SubmissionID: submission.SubmissionID,
+		ExistingMeta: meta,
+	}
+
+	return pageData, nil
+}
+
+func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, editCurationMeta types.EditCurationMeta) error {
+	uid := utils.UserID(ctx)
+
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer dbs.Rollback()
+
+	pgdbs, err := s.pgdal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer pgdbs.Rollback()
+
+	filter := &types.SubmissionsFilter{
+		SubmissionIDs: []int64{sid},
+	}
+
+	submissions, _, err := s.dal.SearchSubmissions(dbs, filter)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if len(submissions) == 0 {
+		return perr("submission not found", http.StatusNotFound)
+	}
+
+	sub := submissions[0]
+
+	subFilePath := fmt.Sprintf("%s/%s", s.submissionsDir, sub.CurrentFilename)
+	if !utils.FileExists(subFilePath) {
+		return fmt.Errorf("submission file not found?")
+	}
+
+	newFilePath, err := s.validator.ApplyEdit(subFilePath, &editCurationMeta)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(*newFilePath)
+
+	stat, err := os.Stat(*newFilePath)
+	if err != nil {
+		return err
+	}
+	filesize := stat.Size()
+
+	userRoles, err := s.dal.GetDiscordUserRoles(dbs, uid)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if constants.IsInAudit(userRoles) && filesize > constants.UserInAuditSubmissionMaxFilesize {
+		msg := "submission filesize limited to 500MB for users in audit"
+		return perr(msg, http.StatusForbidden)
+	}
+
+	var submissionLevel string
+
+	if constants.IsInAudit(userRoles) {
+		submissionLevel = constants.SubmissionLevelAudition
+	} else if constants.IsTrialCurator(userRoles) {
+		submissionLevel = constants.SubmissionLevelTrial
+	} else if constants.IsStaff(userRoles) {
+		submissionLevel = constants.SubmissionLevelStaff
+	}
+
+	err = s.processEditedMetaSubmission(ctx, dbs, pgdbs, *newFilePath, stat.Size(), uid, sub.SubmissionID, submissionLevel)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	err = dbs.Commit()
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	return nil
+}
+
 func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid int64) (*types.ViewSubmissionPageData, error) {
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {

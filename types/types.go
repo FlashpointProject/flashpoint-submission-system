@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+type EditCurationMeta struct {
+	Title               *string `json:"Title"`
+	AlternateTitles     *string `json:"AlternateTitles"`
+	Version             *string `json:"Version"`
+	Developer           *string `json:"Developer"`
+	Publisher           *string `json:"Publisher"`
+	ReleaseDate         *string `json:"ReleaseDate"`
+	Series              *string `json:"Series"`
+	Source              *string `json:"Source"`
+	Status              *string `json:"Status"`
+	Tags                *string `json:"Tags"`
+	Languages           *string `json:"Languages"`
+	OriginalDescription *string `json:"OriginalDescription"`
+	GameNotes           *string `json:"GameNotes"`
+}
+
 type CurationMeta struct {
 	SubmissionID        int64
 	SubmissionFileID    int64
@@ -370,6 +386,13 @@ type ValidatorResponse struct {
 	CurationType     int                      `json:"curation_type"`
 	Meta             CurationMeta             `json:"meta"`
 	Images           []ValidatorResponseImage `json:"images"`
+}
+
+type ValidatorEditMetaResponse struct {
+	Filename         string   `json:"filename"`
+	Path             string   `json:"path"`
+	CurationErrors   []string `json:"curation_errors"`
+	CurationWarnings []string `json:"curation_warnings"`
 }
 
 type ReceiveFileTempNameResp struct {

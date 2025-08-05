@@ -105,11 +105,15 @@ func (z *ZipIndexer) run() {
 					}
 					defer zipReader.Close()
 
+					readFiles := 0
+
 					for _, file := range zipReader.File {
 						if strings.HasSuffix(file.Name, "/") || file.Name == "content.json" {
 							// Directory or content.json, skip
 							continue
 						}
+
+						readFiles += 1
 
 						// Open each file inside the zip
 						fileReader, err := file.Open()
@@ -140,6 +144,13 @@ func (z *ZipIndexer) run() {
 							return err
 						}
 
+					}
+
+					if readFiles == 0 {
+						err = pgdal.IndexerMarkEmpty(z.ctx, data.GameID, data.DateAdded)
+						if err != nil {
+							return err
+						}
 					}
 
 					// Print the game just indexed

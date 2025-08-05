@@ -1423,6 +1423,49 @@ func (a *App) HandleApplyContentPatchPage(w http.ResponseWriter, r *http.Request
 		"templates/submission-content-patch-apply.gohtml")
 }
 
+func (a *App) HandleApplySubmissionMetaEditPage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	params := mux.Vars(r)
+	submissionID := params[constants.ResourceKeySubmissionID]
+
+	sid, err := strconv.ParseInt(submissionID, 10, 64)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		writeError(ctx, w, perr("invalid submission id", http.StatusBadRequest))
+		return
+	}
+
+	if utils.RequestType(ctx) == constants.RequestWeb && r.Method == "GET" {
+		pageData, err := a.Service.GetEditSubmissionPageData(ctx, sid)
+		if err != nil {
+			writeError(ctx, w, err)
+			return
+		}
+
+		a.RenderTemplates(ctx, w, r, pageData,
+			"templates/edit-submission-meta.gohtml")
+		return
+	}
+
+	if utils.RequestType(ctx) == constants.RequestJSON && r.Method == "POST" {
+		var editCurationMeta types.EditCurationMeta
+		err := json.NewDecoder(r.Body).Decode(&editCurationMeta)
+		if err != nil {
+			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		err = a.Service.ApplySubmissionMetaEdit(ctx, sid, editCurationMeta)
+		if err != nil {
+			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		writeResponse(ctx, w, presp("Success", 200), http.StatusOK)
+		return
+	}
+}
+
 func (a *App) HandleViewSubmissionPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	uid := utils.UserID(ctx)

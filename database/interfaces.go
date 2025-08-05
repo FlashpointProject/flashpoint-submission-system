@@ -60,6 +60,7 @@ type PGDAL interface {
 	IndexerInsert(ctx context.Context, crc32sum []byte, md5sum []byte, sha256sum []byte, sha1sum []byte,
 		size uint64, path string, gameId string, zipDate time.Time) error
 	IndexerMarkFailure(ctx context.Context, gameId string, zipDate time.Time) error
+	IndexerMarkEmpty(ctx context.Context, gameId string, zipDate time.Time) error
 
 	GetIndexMatchesHash(dbs PGDBSession, hashType string, hashStr string) ([]*types.IndexMatchData, error)
 	GetIndexMatchesPath(dbs PGDBSession, paths []string) ([]*types.IndexMatchData, error)

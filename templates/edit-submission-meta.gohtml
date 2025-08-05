@@ -1,0 +1,167 @@
+{{define "main"}}
+    <div class="content">
+        <script type="text/javascript">
+            async function applyEdit() {
+                // Get all ticked checkbox inputs on the page
+                const checkboxInputs = document.querySelectorAll('input[type="checkbox"]:checked');
+
+                // Make somewhere to store the new values
+                const values = {};
+
+                if (checkboxInputs.length === 0) {
+                    alert("No fields selected.")
+                    return
+                }
+
+                // Find the newly entered data and store in values struct
+                for (const input of checkboxInputs) {
+                    const name = input.getAttribute('name');
+                    const id = input.getAttribute('id');
+                    const label = document.querySelector(`[for="${id}"]`);
+
+                    if (label) {
+                        if (label.value !== "<nil>") {
+                            values[name] = label.value;
+                        }
+                    }
+                }
+
+                await doWaitingSpinner('Applying metadata edit...', async () => {
+                    let url = '/api/submission/{{ .SubmissionID }}/metaedit'
+                    const res = await sendXHR(url, "POST", JSON.stringify(values), false,
+                        `Failed to apply metaedit'.`, 'Success', null)
+                    if (res === 'Success') {
+                        window.location.pathname = '/web/submission/{{ .SubmissionID }}'
+                    }
+                })
+            }
+        </script>
+        <script>document.title = "Editing Submission Meta {{.ExistingMeta.Title}}" + " | FPFSS";</script>
+        <h1>Editing Submission Metadata</h1>
+
+        <a href="/web/submission/{{ .SubmissionID }}">Back to submission</a>
+
+        <p>Tick <b>Replace</b> next to each field you wish to update, write in the new value, then click <b>Apply Edit</b> at the bottom</p>
+
+        <table id="apply-meta-table" class="pure-table pure-table-striped">
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Existing Metadata</th>
+                    <th>Replace</th>
+                    <th class="new-meta-col">New Metadata</th>
+                </tr>
+            </thead>
+            <tbody id="apply-meta-table-body">
+                  <tr>
+                      <td>Title</td>
+                      <td>{{.ExistingMeta.Title}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Title" name="Title">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Title" value="{{.ExistingMeta.Title}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Alternate Titles</td>
+                      <td>{{.ExistingMeta.AlternateTitles}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-AlternateTitles" name="AlternateTitles">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-AlternateTitles" value="{{.ExistingMeta.AlternateTitles}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Series</td>
+                      <td>{{.ExistingMeta.Series}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Series" name="Series">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Series" value="{{.ExistingMeta.Series}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Developer</td>
+                      <td>{{.ExistingMeta.Developer}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Developer" name="Developer">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Developer" value="{{.ExistingMeta.Developer}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Publisher</td>
+                      <td>{{.ExistingMeta.Publisher}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Publisher" name="Publisher">
+                      </td>
+                      <td class="new-meta-col"><input type="textarea" for="curation-Publisher" value="{{.ExistingMeta.Publisher}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Status</td>
+                      <td>{{.ExistingMeta.Status}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Status" name="Status">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Status" value="{{.ExistingMeta.Status}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Game Notes</td>
+                      <td>{{.ExistingMeta.GameNotes}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-GameNotes" name="GameNotes">
+                      </td>
+                      <td class="new-meta-col"><textarea for="curation-GameNotes" rows="7">{{.ExistingMeta.GameNotes}}</textarea></td>
+                  </tr>
+                  <tr>
+                      <td>Source</td>
+                      <td>{{.ExistingMeta.Source}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Source" name="Source">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Source" value="{{.ExistingMeta.Source}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Release Date</td>
+                      <td>{{.ExistingMeta.ReleaseDate}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-ReleaseDate" name="ReleaseDate">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-ReleaseDate" value="{{.ExistingMeta.ReleaseDate}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Tags</td>
+                      <td>{{.ExistingMeta.Tags}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Tags" name="Tags">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Tags" value="{{.ExistingMeta.Tags}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Version</td>
+                      <td>{{.ExistingMeta.Version}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Version" name="Version">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Version" value="{{.ExistingMeta.Version}}"></td>
+                  </tr>
+                  <tr>
+                      <td>Original Description</td>
+                      <td>{{.ExistingMeta.OriginalDescription}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-OriginalDescription" name="OriginalDescription">
+                      </td>
+                      <td class="new-meta-col"><textarea for="curation-OriginalDescription" rows="7">{{.ExistingMeta.OriginalDescription}}</textarea></td>
+                  </tr>
+                  <tr>
+                      <td>Languages</td>
+                      <td>{{.ExistingMeta.Languages}}</td>
+                      <td class="radio">
+                          <input type="checkbox" id="curation-Languages" name="Languages">
+                      </td>
+                      <td class="new-meta-col"><input for="curation-Languages" value="{{.ExistingMeta.Languages}}"></td>
+                  </tr>
+            </tbody>
+        </table>
+
+        <br>
+
+        <button class="pure-button pure-button-primary" onclick="applyEdit()">Apply Edit</button>
+    </div>
+{{end}}

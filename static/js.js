@@ -247,10 +247,12 @@ function sizeToString(bytes, decimals = 1) {
 }
 
 async function deleteSubmissionFile(sid, sfid) {
-    await sendXHR(`/api/submission/${sid}/file/${sfid}`, "DELETE", null, true,
-        "Failed to delete submission file.",
-        null,
-        "Please provide a reason to delete this submission file:")
+    await doWaitingSpinner('Deleting file...', async () => {
+        const res = await sendXHR(`/api/submission/${sid}/file/${sfid}`, "DELETE", null, true,
+            "Failed to delete submission file.",
+            "Success",
+            "Please provide a reason to delete this submission file:")
+    })
 }
 
 async function deleteSubmission(sid) {

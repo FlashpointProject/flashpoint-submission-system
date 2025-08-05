@@ -52,6 +52,8 @@ func (s *SiteService) createNotification(dbs database.DBSession, authorID, sid i
 		b.WriteString(fmt.Sprintf("A new version has been uploaded by <@%d>", authorID))
 	} else if action == constants.ActionReject {
 		b.WriteString("The submission has been rejected.")
+	} else if action == constants.ActionEditMeta {
+		b.WriteString(fmt.Sprintf("The meta has been edited on the submission by <@%d>", authorID))
 	}
 	b.WriteString("\n")
 

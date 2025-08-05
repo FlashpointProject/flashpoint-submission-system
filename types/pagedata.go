@@ -110,6 +110,12 @@ type ApplyContentPatchPageData struct {
 	ExistingMeta *Game
 }
 
+type EditSubmissionPageData struct {
+	BasePageData
+	SubmissionID int64
+	ExistingMeta *CurationMeta
+}
+
 type ViewSubmissionPageData struct {
 	SubmissionsPageData
 	CurationMeta         *CurationMeta

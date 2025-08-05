@@ -52,6 +52,13 @@
                         Open in Flashpoint Launcher
                     </a>
 
+                    {{if $UserCanModify}}
+                        <a class="pure-button pure-button-primary"
+                           href="/web/submission/{{(index .Submissions 0).SubmissionID}}/metaedit">
+                            Edit Metadata on FPFSS
+                        </a>
+                    {{end}}
+
                     {{if gt (index .Submissions 0).FileCount 1}}
                         <a class="pure-button pure-button-primary"
                            href="/web/submission/{{(index .Submissions 0).SubmissionID}}/files">
@@ -572,6 +579,8 @@
                                 <i class="default-comment">Is not verifying this anymore.</i>
                             {{else if eq .Action "verify"}}
                                 <i class="default-comment">Verified the submission.</i>
+                            {{else if eq .Action "edit-meta"}}
+                                <i class="default-comment">Edited metadata through FPFSS.</i>
                             {{end}}
                         {{end}}
                     </div>

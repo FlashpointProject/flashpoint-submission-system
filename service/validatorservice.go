@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
@@ -103,6 +105,47 @@ func (c *curationValidator) Validate(ctx context.Context, file io.Reader, filena
 	}
 
 	return &vr, nil
+}
+
+func (c *curationValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta) (*string, error) {
+	filePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonData, err := json.Marshal(editCurationMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	client := http.Client{Timeout: 86400 * time.Second}
+	resp, err := client.Post(fmt.Sprintf("%s/edit-meta?path=%s", c.validatorServerURL, url.QueryEscape(filePath)), "application/json;charset=utf-8", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check the response
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("provide to remote error: %s", string(bytes))
+	}
+
+	var vr types.ValidatorEditMetaResponse
+	err = json.Unmarshal(bytes, &vr)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(vr.CurationErrors) > 0 {
+		return nil, fmt.Errorf("errors in meta: %s", strings.Join(vr.CurationErrors, "; "))
+	}
+
+	return &vr.Path, nil
 }
 
 func (c *curationValidator) GetTags(ctx context.Context) ([]types.Tag, error) {

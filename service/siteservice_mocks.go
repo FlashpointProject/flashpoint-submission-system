@@ -277,6 +277,11 @@ type mockValidator struct {
 	mock.Mock
 }
 
+func (m *mockValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta) error {
+	args := m.Called(filePath, editCurationMeta)
+	return args.Error(1)
+}
+
 func (m *mockValidator) Validate(_ context.Context, file io.Reader, filename, filepath string) (*types.ValidatorResponse, error) {
 	args := m.Called(file, filename, filepath)
 	return args.Get(0).(*types.ValidatorResponse), args.Error(1)

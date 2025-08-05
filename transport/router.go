@@ -44,7 +44,7 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 	}
 	isGod := func(r *http.Request, uid int64) (bool, error) {
 		s, err := isColin(r, uid)
-		if err != nil || s == true {
+		if err != nil || s {
 			return s, err
 		} else {
 			return a.UserHasAnyRole(r, uid, constants.GodRoles())
@@ -532,6 +532,22 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 		fmt.Sprintf("/web/submission/{%s}/apply", constants.ResourceKeySubmissionID),
 		http.HandlerFunc(a.RequestWeb(f, false))).
 		Methods("GET")
+
+	f = a.UserAuthMux(
+		a.RequestScope(a.HandleApplySubmissionMetaEditPage, types.AuthScopeSubmissionEdit),
+		muxAny(isStaff,
+			muxAll(isTrialCurator, userOwnsSubmission),
+			muxAll(isInAudit, userOwnsSubmission)))
+
+	router.Handle(
+		fmt.Sprintf("/web/submission/{%s}/metaedit", constants.ResourceKeySubmissionID),
+		http.HandlerFunc(a.RequestWeb(f, false))).
+		Methods("GET")
+
+	router.Handle(
+		fmt.Sprintf("/api/submission/{%s}/metaedit", constants.ResourceKeySubmissionID),
+		http.HandlerFunc(a.RequestJSON(f, false))).
+		Methods("POST")
 
 	////////////////////////
 

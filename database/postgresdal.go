@@ -1632,6 +1632,12 @@ func (d *postgresDAL) IndexerInsert(ctx context.Context, crc32sum []byte, md5sum
 	return err
 }
 
+func (d *postgresDAL) IndexerMarkEmpty(ctx context.Context, gameId string, zipDate time.Time) error {
+	_, err := d.db.Exec(ctx, `UPDATE game_data SET indexed = TRUE, index_error = FALSE WHERE game_id = $1 AND date_added = $2`,
+		gameId, zipDate)
+	return err
+}
+
 func (d *postgresDAL) IndexerMarkFailure(ctx context.Context, gameId string, zipDate time.Time) error {
 	_, err := d.db.Exec(ctx, `UPDATE game_data SET index_error = TRUE WHERE game_id = $1 AND date_added = $2`,
 		gameId, zipDate)

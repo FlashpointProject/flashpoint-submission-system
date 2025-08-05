@@ -239,6 +239,9 @@ textarea {
     background: var(--freeze) !important;
 }
 
+.bgr-edit-meta,
+.dot-edit-meta,
+.button-edit-meta,
 .bgr-upload-file,
 .dot-upload-file,
 .button-upload-file {
@@ -768,4 +771,16 @@ video {
 .monospaced {
     font-family: monospace;
     font-size: 1.25em;
+}
+
+.new-meta-col {
+    min-width: 25vw;
+}
+
+.new-meta-col > input {
+    width: 100%;
+}
+
+.new-meta-col > textarea {
+    width: 100%;
 }
