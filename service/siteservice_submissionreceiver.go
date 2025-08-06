@@ -93,7 +93,7 @@ func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs datab
 			return fmt.Errorf("failed to create comment: %s", err)
 		}
 
-		ifp, err := s._handleSubmissionFileUpdate(ctx, dbs, pgdbs, "meta-edit.pack", destinationFilename, filesize, uid, sid, submissionLevel, vr, md5sum, sha256sum, false)
+		ifp, err := s.handleSubmissionFileUpdate(ctx, dbs, pgdbs, "meta-edit.pack", destinationFilename, filesize, uid, sid, submissionLevel, vr, md5sum, sha256sum, false)
 		if ifp != nil {
 			imageFilePaths = append(imageFilePaths, *ifp...)
 		}
@@ -112,10 +112,20 @@ func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs datab
 	return nil
 }
 
-func (s *SiteService) _handleSubmissionFileUpdate(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, origFilename string, filename string, filesize int64, uid int64, submissionID int64,
+func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, origFilename string, filename string, filesize int64, uid int64, submissionID int64,
 	submissionLevel string, vr *types.ValidatorResponse, md5sum hash.Hash, sha256sum hash.Hash, isSubmissionNew bool) (*[]string, error) {
 	// subscribe the author
 	if err := s.dal.SubscribeUserToSubmission(dbs, uid, submissionID); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+
+	filter := &types.SubmissionsFilter{
+		SubmissionIDs: []int64{submissionID},
+	}
+
+	submissions, _, err := s.dal.SearchSubmissions(dbs, filter)
+	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
 	}
@@ -331,6 +341,43 @@ func (s *SiteService) _handleSubmissionFileUpdate(ctx context.Context, dbs datab
 	if err := s.dal.UpdateSubmissionCacheTable(dbs, submissionID); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
+	}
+
+	// Carry over approvals and verification for metaedits
+	if action == constants.ActionEditMeta && len(submissions) > 0 {
+		submission := submissions[0]
+		if len(submission.ApprovedUserIDs) > 0 {
+			c := &types.Comment{
+				AuthorID:     submission.ApprovedUserIDs[0],
+				SubmissionID: submissionID,
+				Message:      nil,
+				Action:       constants.ActionApprove,
+				CreatedAt:    s.clock.Now().Add(time.Second * 3),
+			}
+
+			_, err = s.dal.StoreComment(dbs, c)
+			if err != nil {
+				utils.LogCtx(ctx).Error(err)
+				return nil, dberr(err)
+			}
+
+			if len(submission.VerifiedUserIDs) > 0 {
+				c := &types.Comment{
+					AuthorID:     submission.VerifiedUserIDs[0],
+					SubmissionID: submissionID,
+					Message:      nil,
+					Action:       constants.ActionVerify,
+					CreatedAt:    s.clock.Now().Add(time.Second * 4),
+				}
+
+				_, err = s.dal.StoreComment(dbs, c)
+				if err != nil {
+					utils.LogCtx(ctx).Error(err)
+					return nil, dberr(err)
+				}
+			}
+		}
+
 	}
 
 	return &imageFilePaths, nil

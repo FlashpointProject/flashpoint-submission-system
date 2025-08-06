@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -107,19 +108,67 @@ func (c *curationValidator) Validate(ctx context.Context, file io.Reader, filena
 	return &vr, nil
 }
 
-func (c *curationValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta) (*string, error) {
+func (c *curationValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) (*string, error) {
 	filePath, err := filepath.Abs(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	jsonData, err := json.Marshal(editCurationMeta)
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	// Add metadata
+	if editCurationMeta != nil {
+		jsonData, err := json.Marshal(editCurationMeta)
+		if err != nil {
+			return nil, err
+		}
+
+		err = writer.WriteField("metadata", string(jsonData))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add logo
+	if logoFile != nil {
+		logoWriter, err := writer.CreateFormFile("logo", "logo.png")
+		if err != nil {
+			return nil, err
+		}
+		_, err = io.Copy(logoWriter, *logoFile)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add screenshot
+	if screenshotFile != nil {
+		screenshotWriter, err := writer.CreateFormFile("screenshot", "ss.png")
+		if err != nil {
+			return nil, err
+		}
+		_, err = io.Copy(screenshotWriter, *screenshotFile)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if editCurationMeta == nil && logoFile == nil && screenshotFile == nil {
+		return nil, fmt.Errorf("at least one field must be provided")
+	}
+
+	err = writer.Close()
 	if err != nil {
 		return nil, err
 	}
 
 	client := http.Client{Timeout: 86400 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("%s/edit-meta?path=%s", c.validatorServerURL, url.QueryEscape(filePath)), "application/json;charset=utf-8", bytes.NewBuffer(jsonData))
+	resp, err := client.Post(
+		fmt.Sprintf("%s/edit-meta?path=%s", c.validatorServerURL, url.QueryEscape(filePath)),
+		writer.FormDataContentType(),
+		&buf,
+	)
 	if err != nil {
 		return nil, err
 	}

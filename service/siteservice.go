@@ -844,6 +844,12 @@ func (s *SiteService) GetEditSubmissionPageData(ctx context.Context, sid int64) 
 
 	submission := submissions[0]
 
+	for _, distinctAction := range submission.DistinctActions {
+		if distinctAction == constants.ActionMarkAdded {
+			return nil, perr("submission is already added to flashpoint, it cannot be metaedited", http.StatusForbidden)
+		}
+	}
+
 	meta, err := s.dal.GetCurationMetaBySubmissionFileID(dbs, submission.FileID)
 	if err != nil && err != sql.ErrNoRows {
 		utils.LogCtx(ctx).Error(err)
@@ -859,7 +865,7 @@ func (s *SiteService) GetEditSubmissionPageData(ctx context.Context, sid int64) 
 	return pageData, nil
 }
 
-func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, editCurationMeta types.EditCurationMeta) error {
+func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) error {
 	uid := utils.UserID(ctx)
 
 	dbs, err := s.dal.NewSession(ctx)
@@ -892,12 +898,18 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 
 	sub := submissions[0]
 
+	for _, distinctAction := range sub.DistinctActions {
+		if distinctAction == constants.ActionMarkAdded {
+			return perr("submission is already added to flashpoint, it cannot be metaedited", http.StatusForbidden)
+		}
+	}
+
 	subFilePath := fmt.Sprintf("%s/%s", s.submissionsDir, sub.CurrentFilename)
 	if !utils.FileExists(subFilePath) {
 		return fmt.Errorf("submission file not found?")
 	}
 
-	newFilePath, err := s.validator.ApplyEdit(subFilePath, &editCurationMeta)
+	newFilePath, err := s.validator.ApplyEdit(subFilePath, editCurationMeta, logoFile, screenshotFile)
 	if err != nil {
 		return err
 	}
@@ -932,6 +944,11 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 
 	err = s.processEditedMetaSubmission(ctx, dbs, pgdbs, *newFilePath, stat.Size(), uid, sub.SubmissionID, submissionLevel)
 	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := s.dal.UpdateSubmissionCacheTable(dbs, sid); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}

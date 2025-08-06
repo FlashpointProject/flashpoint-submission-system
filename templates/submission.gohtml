@@ -52,13 +52,6 @@
                         Open in Flashpoint Launcher
                     </a>
 
-                    {{if $UserCanModify}}
-                        <a class="pure-button pure-button-primary"
-                           href="/web/submission/{{(index .Submissions 0).SubmissionID}}/metaedit">
-                            Edit Metadata on FPFSS
-                        </a>
-                    {{end}}
-
                     {{if gt (index .Submissions 0).FileCount 1}}
                         <a class="pure-button pure-button-primary"
                            href="/web/submission/{{(index .Submissions 0).SubmissionID}}/files">
@@ -67,6 +60,17 @@
                     {{end}}
 
                     <br>
+
+                    {{if not (has "mark-added" (index .Submissions 0).DistinctActions)}}
+                        {{if $UserCanModify}}
+                            <h3>Edit Submission</h3>
+                            <a class="pure-button pure-button-primary"
+                            href="/web/submission/{{(index .Submissions 0).SubmissionID}}/metaedit">
+                                Edit Metadata on FPFSS
+                            </a>
+                            <br>
+                        {{end}}
+                    {{end}}
 
                     {{if and (and (not .CurationMeta.GameExists) ($canFreeze)) (not $isMarkAdded)}}
                         {{if $isFrozen}}
@@ -580,7 +584,7 @@
                             {{else if eq .Action "verify"}}
                                 <i class="default-comment">Verified the submission.</i>
                             {{else if eq .Action "edit-meta"}}
-                                <i class="default-comment">Edited metadata through FPFSS.</i>
+                                <i class="default-comment">Edited metadata / logo / screenshot through FPFSS.</i>
                             {{end}}
                         {{end}}
                     </div>

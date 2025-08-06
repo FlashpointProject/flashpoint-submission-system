@@ -11,7 +11,7 @@ import (
 
 type Validator interface {
 	Validate(ctx context.Context, file io.Reader, filename string) (*types.ValidatorResponse, error)
-	ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta) (*string, error)
+	ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) (*string, error)
 	GetTags(ctx context.Context) ([]types.Tag, error)
 	ProvideArchiveForValidation(filePath string) (*types.ValidatorResponse, error)
 	ProvideArchiveForRepacking(filePath string) (*types.ValidatorRepackResponse, error)

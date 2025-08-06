@@ -277,8 +277,8 @@ type mockValidator struct {
 	mock.Mock
 }
 
-func (m *mockValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta) error {
-	args := m.Called(filePath, editCurationMeta)
+func (m *mockValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) error {
+	args := m.Called(filePath, editCurationMeta, logoFile, screenshotFile)
 	return args.Error(1)
 }
 

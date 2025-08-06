@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1448,14 +1449,54 @@ func (a *App) HandleApplySubmissionMetaEditPage(w http.ResponseWriter, r *http.R
 	}
 
 	if utils.RequestType(ctx) == constants.RequestJSON && r.Method == "POST" {
-		var editCurationMeta types.EditCurationMeta
-		err := json.NewDecoder(r.Body).Decode(&editCurationMeta)
+		err = r.ParseMultipartForm(52428800) // 50mb limit
 		if err != nil {
 			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		err = a.Service.ApplySubmissionMetaEdit(ctx, sid, editCurationMeta)
+		var logoPoint *multipart.File
+		var screenshotPoint *multipart.File
+
+		raw_meta := r.FormValue("metadata")
+		logo, logoHeader, err := r.FormFile("logo")
+		if err != nil && err != http.ErrMissingFile {
+			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+			return
+		} else if err == nil {
+			defer logo.Close()
+			if !strings.HasSuffix(strings.ToLower(logoHeader.Filename), ".png") {
+				writeError(ctx, w, perr("Invalid logo file type", http.StatusBadRequest))
+				return
+			}
+			logoPoint = &logo
+		}
+
+		screenshot, screenshotHeader, err := r.FormFile("screenshot")
+		if err != nil && err != http.ErrMissingFile {
+			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+			return
+		} else if err == nil {
+			defer screenshot.Close()
+			if !strings.HasSuffix(strings.ToLower(screenshotHeader.Filename), ".png") {
+				writeError(ctx, w, perr("Invalid screenshot file type", http.StatusBadRequest))
+				return
+			}
+			screenshotPoint = &screenshot
+		}
+
+		var editCurationMeta *types.EditCurationMeta
+		if raw_meta != "" {
+			utils.LogCtx(ctx).Debug(raw_meta)
+			editCurationMeta = &types.EditCurationMeta{}
+			err = json.Unmarshal([]byte(raw_meta), editCurationMeta)
+			if err != nil {
+				writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+
+		err = a.Service.ApplySubmissionMetaEdit(ctx, sid, editCurationMeta, logoPoint, screenshotPoint)
 		if err != nil {
 			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
 			return
