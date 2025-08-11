@@ -130,6 +130,8 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 		return nil, dberr(err)
 	}
 
+	sub := submissions[0]
+
 	isAudition := submissionLevel == constants.SubmissionLevelAudition
 
 	// also subscribe all those that want to subscribe to new audition uploads
@@ -209,6 +211,9 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 
 	vr.Meta.SubmissionID = submissionID
 	vr.Meta.SubmissionFileID = fid
+	if sub != nil {
+		vr.Meta.GameExists = sub.GameExists
+	}
 
 	if err := s.dal.StoreCurationMeta(dbs, &vr.Meta); err != nil {
 		utils.LogCtx(ctx).Error(err)
