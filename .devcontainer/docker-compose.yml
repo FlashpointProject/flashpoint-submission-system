@@ -1,0 +1,21 @@
+networks:
+  fpfssnetwork:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.50.0.0/16
+          gateway: 10.50.0.1
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    networks:
+      fpfssnetwork:
+        ipv4_address: 10.50.0.10
+    volumes:
+      - ..:/workspaces:cached
+
+
+    command: sleep infinity
