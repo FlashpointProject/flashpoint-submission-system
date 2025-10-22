@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/gorilla/securecookie"
+	"github.com/rs/cors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,9 +48,20 @@ func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Poo
 	if conf.FlashpointSourceOnlyAdminMode {
 		host = "127.0.0.1"
 	}
+
+	// Configure CORS
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:*", "https://flashpointarchive.org", "https://*.flashpointarchive.org", "https://*.unstable.life"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
+	})
+
+	handler := c.Handler(router)
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", host, conf.Port),
-		Handler:      logging.LogRequestHandler(l, router),
+		Handler:      logging.LogRequestHandler(l, handler),
 		ReadTimeout:  time.Duration(1) * time.Hour,
 		WriteTimeout: time.Duration(1) * time.Hour,
 	}
