@@ -2,11 +2,12 @@ package authbot
 
 import (
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/bwmarrin/discordgo"
 	"github.com/sirupsen/logrus"
-	"strconv"
-	"time"
 )
 
 type bot struct {
@@ -108,9 +109,6 @@ func (b *bot) GetFlashpointUserInfo(uid int64, roles []types.DiscordRole) (*type
 		ID:    fmt.Sprintf("%d", uid),
 		Roles: formattedRoles,
 		Color: color,
-	}
-	if err != nil {
-		return nil, err
 	}
 
 	return user, nil

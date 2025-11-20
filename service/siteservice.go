@@ -1472,6 +1472,28 @@ func (s *SiteService) IsUserLongEnoughInServer(ctx context.Context, discordID in
 	return joinedAt.Before(ageThreshold), nil
 }
 
+func (s *SiteService) SaveSystemUser(ctx context.Context, discordUser *types.DiscordUser) error {
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer dbs.Rollback()
+
+	if err := s.dal.StoreDiscordUser(dbs, discordUser); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	err = dbs.Commit()
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	return nil
+}
+
 func (s *SiteService) SaveUser(ctx context.Context, discordUser *types.DiscordUser, scope string, clientID string, ipAddr string) (*AuthToken, error) {
 	getServerRoles := func() (interface{}, error) {
 		return s.authBot.GetFlashpointRoles()
@@ -2813,6 +2835,11 @@ func (s *SiteService) GetUsers(ctx context.Context) ([]*types.User, error) {
 	dbs, _ := s.dal.NewSession(ctx)
 	defer dbs.Rollback()
 	return s.dal.GetUsers(dbs)
+}
+
+func (s *SiteService) GetDiscordUser(ctx context.Context, uid int64) (*types.DiscordUser, error) {
+	dbs, _ := s.dal.NewSession(ctx)
+	return s.dal.GetDiscordUser(dbs, uid)
 }
 
 func (s *SiteService) GetUserStatistics(ctx context.Context, uid int64) (*types.UserStatistics, error) {

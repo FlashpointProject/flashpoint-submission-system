@@ -384,10 +384,10 @@ func (d *mysqlDAL) GetExtendedSubmissionFilesBySubmissionID(dbs DBSession, sid i
 
 // StoreCurationMeta stores curation meta
 func (d *mysqlDAL) StoreCurationMeta(dbs DBSession, cm *types.CurationMeta) error {
-        if cm.RuffleSupport == nil {
-          empty := ""
-          cm.RuffleSupport = &empty
-        }
+	if cm.RuffleSupport == nil {
+		empty := ""
+		cm.RuffleSupport = &empty
+	}
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO curation_meta (fk_submission_file_id, application_path, developer, extreme, game_notes, languages,
                            launch_command, original_description, play_mode, platform, publisher, release_date, series, source, status,
                            tags, tag_categories, title, alternate_titles, library, version, curation_notes, mount_parameters, uuid, game_exists,

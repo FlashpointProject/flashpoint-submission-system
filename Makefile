@@ -19,11 +19,18 @@ remote:
 	$(shell mkdir -p ${REPACK_DIR})
 	docker-compose -p ${DB_CONTAINER_NAME}  -f dc-db.yml up -d database postgres
 
+rebuild-mysql:
+	docker-compose -p ${DB_CONTAINER_NAME} down
+	docker volume rm ${DB_CONTAINER_NAME}_fpfssdb_data
+	docker-compose -p ${DB_CONTAINER_NAME} -f dc-db.yml up -d
+	sleep 10
+	make migrate
+
 rebuild-postgres:
 	docker-compose -p ${DB_CONTAINER_NAME} down
 	docker volume rm ${DB_CONTAINER_NAME}_fpfss_postgres_data
 	docker-compose -p ${DB_CONTAINER_NAME} -f dc-db.yml up -d
-	sleep 5
+	sleep 10
 	make migrate
 
 migrate:

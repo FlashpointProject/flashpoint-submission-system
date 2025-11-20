@@ -25,7 +25,8 @@ Optionally, also run the [archive indexer](https://github.com/Dri0m/recursive-ar
 
 1. Git clone this project, then fetch the submodules: `git submodule update --init --recursive`
 2. Copy the `.env.template` file as `.env` and fill its details
-3. Create a [Discord app](https://discord.com/developers/applications) for OAuth2 + Bot, invite the bot to your server and update `.env` with the details for both
+3. Create a [Discord app](https://discord.com/developers/applications) for `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` and `AUTH_BOT_TOKEN`, invite the bot to your server and update `.env` with the details for both
+4. Build the validator container inside the validator folder with `docker build . -t fpfss-validator`
 
 **More detailed steps are listed below**.
 

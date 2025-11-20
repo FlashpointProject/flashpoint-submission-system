@@ -429,14 +429,12 @@ type GameDump struct {
 	Publisher       string           `json:"publisher"`
 	PrimaryPlatform string           `json:"platform_name,omitempty"`
 	Platforms       []*Platform      `json:"platforms,omitempty"`
-	PlatformsStr    string           `json:"platforms_str"`
 	DateAdded       time.Time        `json:"date_added"`
 	DateModified    time.Time        `json:"date_modified"`
 	PlayMode        string           `json:"play_mode"`
 	Status          string           `json:"status"`
 	Notes           string           `json:"notes"`
 	Tags            []*Tag           `json:"tags,omitempty"`
-	TagsStr         string           `json:"tags_str"`
 	Source          string           `json:"source"`
 	ApplicationPath string           `json:"legacy_application_path"`
 	LaunchCommand   string           `json:"legacy_launch_command"`
@@ -568,7 +566,7 @@ type TagCategory struct {
 
 type LauncherDumpRelation struct {
 	GameID string `json:"g"`
-	Value  int64  `json:"v"`
+	Value  string `json:"v"`
 }
 
 type LauncherDump struct {

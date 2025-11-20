@@ -20,6 +20,7 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/logging"
 	"github.com/FlashpointProject/flashpoint-submission-system/resumableuploadservice"
 	"github.com/FlashpointProject/flashpoint-submission-system/service"
+	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/mux"
@@ -99,6 +100,18 @@ func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Poo
 		decoder:             decoder,
 		authMiddlewareCache: memoize.NewMemoizer(5*time.Second, 60*time.Minute),
 		AdminModePassword:   adminPass,
+	}
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
+	// Add system user if missing
+	_, err = a.Service.GetDiscordUser(ctx, a.Conf.SystemUid)
+	if err != nil {
+		discordUser := types.DiscordUser{
+			ID:       a.Conf.SystemUid,
+			Username: "SYSTEM",
+		}
+		a.Service.SaveSystemUser(ctx, &discordUser)
 	}
 
 	l.WithField("port", conf.Port).Infoln("starting the server...")

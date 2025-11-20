@@ -1023,6 +1023,16 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM game_data WHERE 1=1`)
 	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM game_tags_tag WHERE 1=1`)
 	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM game_platforms_platform WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_game WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_additional_app WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_game_data WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_game_tags_tag WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_game_platforms_platform WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_tag WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_tag_alias WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_platform WHERE 1=1`)
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM changelog_platform_alias WHERE 1=1`)
+
 	if err != nil {
 		return err
 	}
@@ -1175,6 +1185,46 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 		return err
 	}
 
+	// Read all Tags and Platforms from DB into memory so we can reference during
+	platforms, err := d.SearchPlatforms(dbs, nil)
+	if err != nil {
+		return err
+	}
+	tags, err := d.SearchTags(dbs, nil)
+	if err != nil {
+		return err
+	}
+
+	// Build platform lookup map (alias -> ID)
+	platformLookup := make(map[string]int64)
+	for _, platform := range platforms {
+		if platform.Aliases != nil && *platform.Aliases != "" {
+			// Split aliases and map each to the platform ID
+			aliases := strings.Split(*platform.Aliases, ",")
+			for _, alias := range aliases {
+				alias = strings.TrimSpace(alias)
+				if alias != "" {
+					platformLookup[alias] = platform.ID
+				}
+			}
+		}
+	}
+
+	// Build tag lookup map (alias -> ID)
+	tagLookup := make(map[string]int64)
+	for _, tag := range tags {
+		if tag.Aliases != nil && *tag.Aliases != "" {
+			// Split aliases and map each to the tag ID
+			aliases := strings.Split(*tag.Aliases, ",")
+			for _, alias := range aliases {
+				alias = strings.TrimSpace(alias)
+				if alias != "" {
+					tagLookup[alias] = tag.ID
+				}
+			}
+		}
+	}
+
 	// Copy game tag relations
 	utils.LogCtx(dbs.Ctx()).Debug("copying game tag relations")
 	_, err = dbs.Tx().CopyFrom(
@@ -1182,9 +1232,13 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 		pgx.Identifier{"game_tags_tag"},
 		[]string{"game_id", "tag_id"},
 		pgx.CopyFromSlice(len(dump.TagRelations), func(i int) ([]interface{}, error) {
+			tagId, ok := tagLookup[dump.TagRelations[i].Value]
+			if !ok {
+				return nil, fmt.Errorf("tag not found: %s", dump.TagRelations[i].Value)
+			}
 			return []interface{}{
 				dump.TagRelations[i].GameID,
-				dump.TagRelations[i].Value,
+				tagId,
 			}, nil
 		}),
 	)
@@ -1199,9 +1253,13 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 		pgx.Identifier{"game_platforms_platform"},
 		[]string{"game_id", "platform_id"},
 		pgx.CopyFromSlice(len(dump.PlatformRelations), func(i int) ([]interface{}, error) {
+			platformId, ok := platformLookup[dump.PlatformRelations[i].Value]
+			if !ok {
+				return nil, fmt.Errorf("platform not found: %s", dump.PlatformRelations[i].Value)
+			}
 			return []interface{}{
 				dump.PlatformRelations[i].GameID,
-				dump.PlatformRelations[i].Value,
+				platformId,
 			}, nil
 		}),
 	)
@@ -1246,8 +1304,8 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 				dump.Games.Games[i].OriginalDesc,
 				dump.Games.Games[i].Language,
 				dump.Games.Games[i].Library,
-				dump.Games.Games[i].TagsStr,
-				dump.Games.Games[i].PlatformsStr,
+				"",
+				"",
 				"create",
 				"Database Import",
 				conf.SystemUid,
