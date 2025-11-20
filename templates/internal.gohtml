@@ -47,6 +47,18 @@
             <button type="submit" class="pure-button button-delete">Delete user's sessions</button>
         </form>
 
+        <form class="pure-form pure-form-stacked" action="/api/internal/approve-submission" method="POST">
+            <label for="submission-id">Submission ID</label>
+            <input type="text" name="submission-id" value="" size="32">
+            <button type="submit" class="pure-button button-approve">Force Approve Submission</button>
+        </form>
+
+        <form class="pure-form pure-form-stacked" action="/api/internal/verify-submission" method="POST">
+            <label for="submission-id">Submission ID</label>
+            <input type="text" name="submission-id" value="" size="32">
+            <button type="submit" class="pure-button button-approve">Force Verify Submission</button>
+        </form>
+
         <br>
         <br>
 

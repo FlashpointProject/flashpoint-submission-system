@@ -331,7 +331,7 @@ func (s *SiteService) RestoreGame(ctx context.Context, gameId string, reason str
 	return nil
 }
 
-func (s *SiteService) GetGamePageData(ctx context.Context, gameId string, imageCdn string, compressedImages bool, revisionDate string) (*types.GamePageData, error) {
+func (s *SiteService) GetGamePageData(ctx context.Context, gameId string, revisionDate string) (*types.GamePageData, error) {
 	dbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -392,23 +392,11 @@ func (s *SiteService) GetGamePageData(ctx context.Context, gameId string, imageC
 		return revisions[i].CreatedAt.After(revisions[j].CreatedAt)
 	})
 
-	logoUrl := fmt.Sprintf("%s/%s", imageCdn, game.LogoPath)
-	if compressedImages {
-		logoUrl = logoUrl + "?type=jpg"
-	}
-	ssUrl := fmt.Sprintf("%s/%s", imageCdn, game.ScreenshotPath)
-	if compressedImages {
-		ssUrl = ssUrl + "?type=jpg"
-	}
-
 	validDeleteReasons := constants.GetValidDeleteReasons()
 	validRestoreReasons := constants.GetValidRestoreReasons()
 
 	pageData := &types.GamePageData{
-		ImagesCdn:           imageCdn,
 		Game:                game,
-		LogoUrl:             logoUrl,
-		ScreenshotUrl:       ssUrl,
 		Revisions:           revisions,
 		GameUsername:        user.Username,
 		GameAvatarURL:       utils.FormatAvatarURL(user.ID, user.Avatar),
@@ -2646,6 +2634,136 @@ func (s *SiteService) IndexUnindexedFlashfreezeItems(l *logrus.Entry) {
 	}
 }
 
+func (s *SiteService) ForceApproveSubmission(ctx context.Context, sid int64) error {
+	uid := utils.UserID(ctx)
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer dbs.Rollback()
+	pgdbs, err := s.pgdal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer pgdbs.Rollback()
+
+	filter := &types.SubmissionsFilter{
+		SubmissionIDs: []int64{sid},
+	}
+
+	submissions, _, err := s.dal.SearchSubmissions(dbs, filter)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	if len(submissions) == 0 {
+		return fmt.Errorf("no submission with that id")
+	}
+
+	msg := "Forcefully Approved"
+	c := &types.Comment{
+		AuthorID:     uid,
+		SubmissionID: sid,
+		Message:      &msg,
+		Action:       constants.ActionApprove,
+		CreatedAt:    s.clock.Now(),
+	}
+
+	cid, err := s.dal.StoreComment(dbs, c)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	if err := s.EmitSubmissionCommentEvent(pgdbs, c.AuthorID, c.SubmissionID, cid, c.Action, nil); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := s.dal.UpdateSubmissionCacheTable(dbs, sid); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := pgdbs.Commit(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := dbs.Commit(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	return nil
+}
+
+func (s *SiteService) ForceVerifySubmission(ctx context.Context, sid int64) error {
+	uid := utils.UserID(ctx)
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer dbs.Rollback()
+	pgdbs, err := s.pgdal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	defer pgdbs.Rollback()
+
+	filter := &types.SubmissionsFilter{
+		SubmissionIDs: []int64{sid},
+	}
+
+	submissions, _, err := s.dal.SearchSubmissions(dbs, filter)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	if len(submissions) == 0 {
+		return fmt.Errorf("no submission with that id")
+	}
+
+	msg := "Forcefully Approved"
+	c := &types.Comment{
+		AuthorID:     uid,
+		SubmissionID: sid,
+		Message:      &msg,
+		Action:       constants.ActionVerify,
+		CreatedAt:    s.clock.Now(),
+	}
+
+	cid, err := s.dal.StoreComment(dbs, c)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+	if err := s.EmitSubmissionCommentEvent(pgdbs, c.AuthorID, c.SubmissionID, cid, c.Action, nil); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := s.dal.UpdateSubmissionCacheTable(dbs, sid); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := pgdbs.Commit(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	if err := dbs.Commit(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	return nil
+}
+
 func (s *SiteService) DeleteUserSessions(ctx context.Context, targetID int64) (int64, error) {
 	uid := utils.UserID(ctx)
 
@@ -3401,6 +3519,8 @@ func (s *SiteService) SaveGame(ctx context.Context, game *types.Game) error {
 
 	if !constants.IsDeleter(userRoles) {
 		game.Source = existingGame.Source
+		game.LogoPath = existingGame.LogoPath
+		game.ScreenshotPath = existingGame.ScreenshotPath
 	}
 	game.ArchiveState = existingGame.ArchiveState
 

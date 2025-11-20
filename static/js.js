@@ -880,17 +880,19 @@ function parseDiff(diff) {
     return diff;
 }
 
-function createDiffTable(diff) {
-    const table = document.createElement('table');
+function createDiffTable(diff, outputId) {
+    let table = document.createElement('table');
     table.className = "pure-table pure-table-striped revisions-table";
     
     const thead = table.createTHead();
     const headerRow = thead.insertRow();
-    ['Field', 'Previous', 'Current'].forEach(text => {
+    ['Field', 'Previous', 'New'].forEach(text => {
         const th = document.createElement('th');
         th.textContent = text;
         headerRow.appendChild(th);
     });
+
+
     
     const tbody = table.createTBody();
     Object.keys(diff).forEach(key => {
@@ -898,11 +900,39 @@ function createDiffTable(diff) {
         const cell1 = row.insertCell(0);
         const cell2 = row.insertCell(1);
         const cell3 = row.insertCell(2);
-        
+
         cell1.textContent = key;
-        cell2.innerHTML = diff[key].previous || '<span style="color: #999; font-style: italic;">(empty)</span>';
-        cell3.textContent = diff[key].current;
+        if (key === 'LogoPath' || key === 'ScreenshotPath') {
+            if (diff[key].previous) {
+                cell2.appendChild(getGameImageDiv(diff[key].previous));
+            } else {
+                cell2.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+            }
+            if (diff[key].current) {
+                cell3.appendChild(getGameImageDiv(diff[key].current));
+            } else {
+                cell3.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+            }
+        } else {
+            cell2.innerHTML = diff[key].previous || '<span style="color: #999; font-style: italic;">(empty)</span>';
+            cell3.innerHTML = diff[key].current || '<span style="color: #999; font-style: italic;">(empty)</span>';
+        }
     });
-    
-    return table;
+
+    if (tbody.rows.length === 0) {
+        table = document.createElement('div');
+        table.className = "comment-body";
+        table.textContent = "Diff unavailable";
+    }
+
+    const preElem = document.getElementById(outputId);
+    preElem.parentNode.appendChild(table);
+}
+
+function getGameImageDiv(pathname) {
+    const elem = document.createElement('img');
+    const url = `/data/game/image/${pathname}`;
+    elem.className = 'diff-image';
+    elem.src = url;
+    return elem;
 }

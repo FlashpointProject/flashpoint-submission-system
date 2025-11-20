@@ -740,19 +740,24 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 				return err
 			}
 
+			utils.LogCtx(ectx).Debug("decoded image")
+
 			var imageFilename string
 			var imageFilenameFilePath string
 			for {
 				imageFilename = s.randomStringProvider.RandomString(64)
 				imageFilenameFilePath = fmt.Sprintf("%s/%s", s.submissionImagesDir, imageFilename)
+				utils.LogCtx(ectx).Debug(fmt.Sprintf("Trying %s", imageFilenameFilePath))
 				if !utils.FileExists(imageFilenameFilePath) {
 					break
 				}
 			}
+			utils.LogCtx(ectx).Debug("Found string to use")
 
 			imageFilePaths = append(imageFilePaths, imageFilenameFilePath)
 
-			if err := ioutil.WriteFile(imageFilenameFilePath, imageData, 0644); err != nil {
+			utils.LogCtx(ectx).Debug(fmt.Sprintf("saving to %s", imageFilenameFilePath))
+			if err := os.WriteFile(imageFilenameFilePath, imageData, 0644); err != nil {
 				return err
 			}
 

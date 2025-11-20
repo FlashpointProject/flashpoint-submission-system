@@ -83,6 +83,7 @@ const (
 	ResourceKeySessionID             = "session-id"
 	ResourceKeyClientAppID           = "client-app-id"
 	ResourceKeyRecommendationOp      = "recommendation-op"
+	ResourceKeyLongFile              = "long-file"
 )
 
 const (

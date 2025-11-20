@@ -735,6 +735,13 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 	////////////////////////
 
 	router.Handle(
+		fmt.Sprintf("/data/game/image/{%s:.*}", constants.ResourceKeyLongFile),
+		http.HandlerFunc(a.RequestData(a.UserAuthMux(
+			a.RequestScope(a.HandleGameImageFile, types.AuthScopeGameRead),
+		), false))).
+		Methods("GET")
+
+	router.Handle(
 		fmt.Sprintf("/data/submission/{%s}/file/{%s}", constants.ResourceKeySubmissionID, constants.ResourceKeyFileID),
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadSubmissionFile, types.AuthScopeSubmissionReadFiles),
@@ -920,6 +927,14 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 
 	router.Handle("/api/internal/delete-user-sessions",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleDeleteUserSessions, types.AuthScopeAll), isGod), false))).
+		Methods("POST")
+
+	router.Handle("/api/internal/approve-submission",
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleForceApproveSubmission, types.AuthScopeAll), isGod), false))).
+		Methods("POST")
+
+	router.Handle("/api/internal/verify-submission",
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleForceVerifySubmission, types.AuthScopeAll), isGod), false))).
 		Methods("POST")
 
 	router.Handle("/api/internal/send-reminders-about-requested-changes",

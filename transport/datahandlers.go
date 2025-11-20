@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,38 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/gorilla/mux"
 )
+
+func (a *App) HandleGameImageFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	params := mux.Vars(r)
+	longFilePath := params[constants.ResourceKeyLongFile]
+
+	diskFilePath := filepath.Clean(fmt.Sprintf(`%s/%s`, a.Conf.ImagesDir, longFilePath))
+
+	if !strings.HasPrefix(diskFilePath, filepath.Clean(a.Conf.ImagesDir)) {
+		writeError(ctx, w, perr("invalid file path", http.StatusBadRequest))
+		return
+	}
+
+	fileInfo, err := os.Stat(diskFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error accessing file", http.StatusInternalServerError)
+		return
+	}
+
+	if fileInfo.IsDir() {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	f, err := os.Open(diskFilePath)
+	defer f.Close()
+	http.ServeContent(w, r, fileInfo.Name(), fileInfo.ModTime(), f)
+}
 
 func (a *App) HandleDownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

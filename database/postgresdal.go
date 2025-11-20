@@ -535,6 +535,7 @@ func (d *postgresDAL) GetGame(dbs PGDBSession, gameId string) (*types.Game, erro
 
 func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *time.Time) (*types.Game, error) {
 	var game types.Game
+	utils.LogCtx(dbs.Ctx()).Debug(fmt.Sprintf("Finding %s", gameId))
 
 	// Get game
 	if changelogDate != nil {
@@ -578,7 +579,8 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 	// Get add apps
 	if changelogDate != nil {
 		rows, err := dbs.Tx().Query(dbs.Ctx(),
-			`SELECT * FROM changelog_additional_app WHERE parent_game_id = $1 AND date_modified = $2`,
+			`SELECT application_path, auto_run_before, launch_command, name, wait_for_exit, parent_game_id 
+				FROM changelog_additional_app WHERE parent_game_id = $1 AND date_modified = $2`,
 			gameId, changelogDate,
 		)
 		if err != nil {
@@ -588,7 +590,7 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 		defer rows.Close()
 		for rows.Next() {
 			var addApp types.AdditionalApp
-			err = rows.Scan(&addApp.ID, &addApp.ApplicationPath, &addApp.AutoRunBefore, &addApp.LaunchCommand, &addApp.Name, &addApp.WaitForExit, &addApp.ParentGameID)
+			err = rows.Scan(&addApp.ApplicationPath, &addApp.AutoRunBefore, &addApp.LaunchCommand, &addApp.Name, &addApp.WaitForExit, &addApp.ParentGameID)
 			if err != nil {
 				utils.LogCtx(dbs.Ctx()).Error(err)
 				return nil, err
@@ -600,7 +602,8 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 		}
 	} else {
 		rows, err := dbs.Tx().Query(dbs.Ctx(),
-			`SELECT * FROM additional_app WHERE parent_game_id = $1`,
+			`SELECT id, application_path, auto_run_before, launch_command, name, wait_for_exit, parent_game_id
+				FROM additional_app WHERE parent_game_id = $1`,
 			gameId,
 		)
 		if err != nil {
@@ -2011,7 +2014,7 @@ func (d *postgresDAL) AddSubmissionFromValidator(dbs PGDBSession, uid int64, vr 
 	game.UserID = uid
 	game.AddApps = make([]*types.AdditionalApp, 0)
 	game.LogoPath = fmt.Sprintf("Logos/%s/%s/%s.png", game.ID[:2], game.ID[2:4], game.ID)
-	game.ScreenshotPath = fmt.Sprintf("Logos/%s/%s/%s.png", game.ID[:2], game.ID[2:4], game.ID)
+	game.ScreenshotPath = fmt.Sprintf("Screenshots/%s/%s/%s.png", game.ID[:2], game.ID[2:4], game.ID)
 
 	// Tags
 	rawTags := strings.Split(*vr.Meta.Tags, ";")

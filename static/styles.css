@@ -789,3 +789,8 @@ video {
 .revisions-table {
     margin: 0 0.7em 0.7em 0.7em;
 }
+
+.diff-image {
+    max-height: 12rem;
+    max-width: 14rem;
+}

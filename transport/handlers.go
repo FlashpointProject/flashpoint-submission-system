@@ -789,7 +789,7 @@ func (a *App) HandleGamePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pageData, err := a.Service.GetGamePageData(ctx, gameId, a.Conf.ImagesCdn, a.Conf.ImagesCdnCompressed, revisionDate)
+	pageData, err := a.Service.GetGamePageData(ctx, gameId, revisionDate)
 	if err != nil {
 		writeError(ctx, w, err)
 		return
@@ -1045,7 +1045,7 @@ func (a *App) HandleGameLogo(w http.ResponseWriter, r *http.Request) {
 	gameId := params[constants.ResourceKeyGameID]
 	revisionDate := ""
 
-	game, err := a.Service.GetGamePageData(ctx, gameId, a.Conf.ImagesCdn, a.Conf.ImagesCdnCompressed, revisionDate)
+	game, err := a.Service.GetGamePageData(ctx, gameId, revisionDate)
 	if err != nil {
 		http.Error(w, "Game does not exist", http.StatusNotFound)
 		return
@@ -1144,7 +1144,7 @@ func (a *App) HandleGameScreenshot(w http.ResponseWriter, r *http.Request) {
 	gameId := params[constants.ResourceKeyGameID]
 	revisionDate := ""
 
-	game, err := a.Service.GetGamePageData(ctx, gameId, a.Conf.ImagesCdn, a.Conf.ImagesCdnCompressed, revisionDate)
+	game, err := a.Service.GetGamePageData(ctx, gameId, revisionDate)
 	if err != nil {
 		http.Error(w, "Game does not exist", http.StatusNotFound)
 		return
@@ -1227,20 +1227,6 @@ func (a *App) HandleGameScreenshot(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.Service.EmitGameScreenshotUpdateEvent(ctx, uid, gameId); err != nil {
 		utils.LogCtx(ctx).Error(err)
-	}
-
-	url := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png",
-		a.Conf.ImagesCdn, gameId[:2], gameId[2:4], gameId)
-	// Clear the image microservice cached file
-	client := &http.Client{}
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		http.Error(w, "Updated file, but failed to clear image cache", http.StatusInternalServerError)
-	}
-	req.Header.Set("Authorization", "Bearer "+a.Conf.ImagesCdnApiKey)
-	_, err = client.Do(req)
-	if err != nil {
-		http.Error(w, "Updated file, but failed to clear image cache", http.StatusInternalServerError)
 	}
 
 	// File saved successfully
@@ -1866,6 +1852,52 @@ func (a *App) HandleIndexUnindexedFlashfreeze(w http.ResponseWriter, r *http.Req
 	}()
 
 	writeResponse(ctx, w, presp("starting flashfreeze indexing of unindexed files", http.StatusOK), http.StatusOK)
+}
+
+func (a *App) HandleForceApproveSubmission(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if err := r.ParseForm(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		writeError(ctx, w, perr("failed to parse form", http.StatusBadRequest))
+		return
+	}
+
+	req := &types.InternalSubmissionRequest{}
+
+	if err := a.decoder.Decode(req, r.PostForm); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		writeError(ctx, w, perr("failed to decode query params", http.StatusInternalServerError))
+		return
+	}
+
+	err := a.Service.ForceApproveSubmission(ctx, req.SubmissionID)
+	if err != nil {
+		writeError(ctx, w, perr("error approving submission", http.StatusBadRequest))
+	}
+}
+
+func (a *App) HandleForceVerifySubmission(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if err := r.ParseForm(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		writeError(ctx, w, perr("failed to parse form", http.StatusBadRequest))
+		return
+	}
+
+	req := &types.InternalSubmissionRequest{}
+
+	if err := a.decoder.Decode(req, r.PostForm); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		writeError(ctx, w, perr("failed to decode query params", http.StatusInternalServerError))
+		return
+	}
+
+	err := a.Service.ForceVerifySubmission(ctx, req.SubmissionID)
+	if err != nil {
+		writeError(ctx, w, perr("error verifying submission", http.StatusBadRequest))
+	}
 }
 
 func (a *App) HandleDeleteUserSessions(w http.ResponseWriter, r *http.Request) {

@@ -44,9 +44,6 @@ type Config struct {
 	SubmissionsDirFullPath        string
 	SubmissionImagesDirFullPath   string
 	SystemUid                     int64
-	ImagesCdn                     string
-	ImagesCdnCompressed           bool
-	ImagesCdnApiKey               string
 	MinLauncherVersion            string
 	DataPacksDir                  string
 	FrozenPacksDir                string
@@ -151,9 +148,6 @@ func GetConfig(l *logrus.Entry) *Config {
 		SubmissionsDirFullPath:        EnvString("SUBMISSIONS_DIR_FULL_PATH"),
 		SubmissionImagesDirFullPath:   EnvString("SUBMISSION_IMAGES_DIR_FULL_PATH"),
 		SystemUid:                     EnvInt("SYSTEM_UID"),
-		ImagesCdn:                     EnvString("IMAGES_CDN"),
-		ImagesCdnCompressed:           EnvBool("IMAGES_CDN_COMPRESSED"),
-		ImagesCdnApiKey:               EnvString("IMAGES_CDN_API_KEY"),
 		MinLauncherVersion:            EnvString("MIN_LAUNCHER_VERSION"),
 		DataPacksDir:                  EnvString("DATA_PACKS_PATH"),
 		FrozenPacksDir:                EnvString("FROZEN_PACKS_PATH"),

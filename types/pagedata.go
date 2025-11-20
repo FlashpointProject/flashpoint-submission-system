@@ -57,9 +57,6 @@ type GamePageData struct {
 	GameAuthorID        int64
 	GameUsername        string
 	Revisions           []*RevisionInfo
-	LogoUrl             string
-	ScreenshotUrl       string
-	ImagesCdn           string
 	RedirectsTo         string
 	ValidDeleteReasons  []string
 	ValidRestoreReasons []string

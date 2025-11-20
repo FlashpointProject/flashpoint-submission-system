@@ -801,6 +801,10 @@ type DeleteUserSessionsRequest struct {
 	DiscordID int64 `schema:"discord-user-id"`
 }
 
+type InternalSubmissionRequest struct {
+	SubmissionID int64 `schema:"submission-id"`
+}
+
 type GameContentPatch struct {
 	Title           *string `json:"Title,omitempty"`
 	AlternateTitles *string `json:"AlternateTitles,omitempty"`

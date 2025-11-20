@@ -1,6 +1,5 @@
 {{define "main"}}
     <div class="content">
-        {{ $imagesCdn := .ImagesCdn }}
         {{ $gameId := .Game.ID }}
         {{ $editor := isStaff .UserRoles }}
 
@@ -159,9 +158,9 @@
 
         <br><br>
 
-        <img src={{.LogoUrl}}
+        <img src="/data/game/image/{{ .Game.LogoPath }}"
              class="curation-image" alt="curation image">
-        <img src={{.ScreenshotUrl}}
+        <img src="/data/game/image/{{ .Game.ScreenshotPath }}"
              class="curation-image" alt="curation image">
 
         <h3>Metadata</h3>
@@ -233,7 +232,7 @@
                     {{else}}
                         {{range .Game.Platforms}}
                             <div class="tag-box">
-                                <div class="tag-box_platform-icon" style="background-image: url({{$imagesCdn}}/Platforms/{{.Name}}.png)"></div>
+                                <div class="tag-box_platform-icon" style="background-image: url(/data/platform-icon/{{.Name}}.png)"></div>
                                 <div>{{.Name}}</div>
                             </div>
                         {{end}}
@@ -459,11 +458,8 @@
                         <script>
                             (() => {
                                 const diff = parseDiff({{ .Diff }});
-                                console.log(diff);
                                 if (diff) {
-                                    const tableElem = createDiffTable(diff);
-                                    const preElem = document.getElementById("diff-output-{{ .CreatedAt }}");
-                                    preElem.parentNode.appendChild(tableElem);
+                                    let tableElem = createDiffTable(diff, "diff-output-{{ .CreatedAt }}");
                                 }
                             })()
                         </script>
