@@ -869,3 +869,40 @@ async function selectReason(message, showRedirect, options, cb) {
             document.body.removeChild(overlay);
         });
 }
+
+function parseDiff(diff) {
+    for (const key of Object.keys(diff)) {
+        if (diff[key] === null) {
+            delete diff[key];
+        }
+    }
+
+    return diff;
+}
+
+function createDiffTable(diff) {
+    const table = document.createElement('table');
+    table.className = "pure-table pure-table-striped revisions-table";
+    
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    ['Field', 'Previous', 'Current'].forEach(text => {
+        const th = document.createElement('th');
+        th.textContent = text;
+        headerRow.appendChild(th);
+    });
+    
+    const tbody = table.createTBody();
+    Object.keys(diff).forEach(key => {
+        const row = tbody.insertRow();
+        const cell1 = row.insertCell(0);
+        const cell2 = row.insertCell(1);
+        const cell3 = row.insertCell(2);
+        
+        cell1.textContent = key;
+        cell2.innerHTML = diff[key].previous || '<span style="color: #999; font-style: italic;">(empty)</span>';
+        cell3.textContent = diff[key].current;
+    });
+    
+    return table;
+}

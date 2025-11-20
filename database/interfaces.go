@@ -35,6 +35,7 @@ type PGDAL interface {
 	GetPlatformByName(dbs PGDBSession, platformName string) (*types.Platform, error)
 	GetGamesSlimInfo(dbs PGDBSession, gameIds []string) ([]*types.GameSlimInfo, error)
 	GetGames(dbs PGDBSession, gameIds []string) ([]*types.Game, error)
+	GetChangelogGame(dbs PGDBSession, gameId string, createdAt time.Time) (*types.Game, error)
 	GetGame(dbs PGDBSession, gameId string) (*types.Game, error)
 	GetGameData(dbs PGDBSession, gameId string, date int64) (*types.GameData, error)
 	GetGameDataIndex(dbs PGDBSession, gameId string, date int64) (*types.GameDataIndex, error)

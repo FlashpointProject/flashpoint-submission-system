@@ -785,3 +785,7 @@ video {
 .new-meta-col > textarea {
     width: 100%;
 }
+
+.revisions-table {
+    margin: 0 0.7em 0.7em 0.7em;
+}

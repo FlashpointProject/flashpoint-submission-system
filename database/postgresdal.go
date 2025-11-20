@@ -525,101 +525,232 @@ func (d *postgresDAL) GetGames(dbs PGDBSession, gameIds []string) ([]*types.Game
 	return games, nil
 }
 
+func (d *postgresDAL) GetChangelogGame(dbs PGDBSession, gameId string, createdAt time.Time) (*types.Game, error) {
+	return d._GetGame(dbs, gameId, &createdAt)
+}
+
 func (d *postgresDAL) GetGame(dbs PGDBSession, gameId string) (*types.Game, error) {
-	// Get game
+	return d._GetGame(dbs, gameId, nil)
+}
+
+func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *time.Time) (*types.Game, error) {
 	var game types.Game
-	err := dbs.Tx().QueryRow(dbs.Ctx(), `SELECT id, parent_game_id, title, alternate_titles, series, developer,
-       		publisher, date_added, date_modified, play_mode, status, notes,
-       		source, application_path, launch_command, release_Date, version,
-       		original_description, language, library, active_data_id, tags_str, platforms_str,
-       		action, reason, deleted, user_id, platform_name, archive_state, ruffle_support,
-					logo_path, screenshot_path
-			FROM game WHERE id = $1`, gameId).
-		Scan(&game.ID, &game.ParentGameID, &game.Title, &game.AlternateTitles, &game.Series, &game.Developer,
-			&game.Publisher, &game.DateAdded, &game.DateModified, &game.PlayMode, &game.Status, &game.Notes,
-			&game.Source, &game.ApplicationPath, &game.LaunchCommand, &game.ReleaseDate, &game.Version,
-			&game.OriginalDesc, &game.Language, &game.Library, &game.ActiveDataID, &game.TagsStr, &game.PlatformsStr,
-			&game.Action, &game.Reason, &game.Deleted, &game.UserID, &game.PrimaryPlatform, &game.ArchiveState, &game.RuffleSupport,
-			&game.LogoPath, &game.ScreenshotPath)
-	if err != nil {
-		return nil, err
+
+	// Get game
+	if changelogDate != nil {
+		err := dbs.Tx().QueryRow(dbs.Ctx(), `SELECT id, parent_game_id, title, alternate_titles, series, developer,
+			publisher, date_added, date_modified, play_mode, status, notes,
+			source, application_path, launch_command, release_Date, version,
+			original_description, language, library, active_data_id, tags_str, platforms_str,
+			action, reason, user_id, platform_name, archive_state, ruffle_support,
+			logo_path, screenshot_path
+		FROM changelog_game WHERE id = $1 AND date_modified = $2`, gameId, changelogDate).
+			Scan(&game.ID, &game.ParentGameID, &game.Title, &game.AlternateTitles, &game.Series, &game.Developer,
+				&game.Publisher, &game.DateAdded, &game.DateModified, &game.PlayMode, &game.Status, &game.Notes,
+				&game.Source, &game.ApplicationPath, &game.LaunchCommand, &game.ReleaseDate, &game.Version,
+				&game.OriginalDesc, &game.Language, &game.Library, &game.ActiveDataID, &game.TagsStr, &game.PlatformsStr,
+				&game.Action, &game.Reason, &game.UserID, &game.PrimaryPlatform, &game.ArchiveState, &game.RuffleSupport,
+				&game.LogoPath, &game.ScreenshotPath)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, err
+		}
+	} else {
+		err := dbs.Tx().QueryRow(dbs.Ctx(), `SELECT id, parent_game_id, title, alternate_titles, series, developer,
+			publisher, date_added, date_modified, play_mode, status, notes,
+			source, application_path, launch_command, release_Date, version,
+			original_description, language, library, active_data_id, tags_str, platforms_str,
+			action, reason, deleted, user_id, platform_name, archive_state, ruffle_support,
+			logo_path, screenshot_path
+		FROM game WHERE id = $1`, gameId).
+			Scan(&game.ID, &game.ParentGameID, &game.Title, &game.AlternateTitles, &game.Series, &game.Developer,
+				&game.Publisher, &game.DateAdded, &game.DateModified, &game.PlayMode, &game.Status, &game.Notes,
+				&game.Source, &game.ApplicationPath, &game.LaunchCommand, &game.ReleaseDate, &game.Version,
+				&game.OriginalDesc, &game.Language, &game.Library, &game.ActiveDataID, &game.TagsStr, &game.PlatformsStr,
+				&game.Action, &game.Reason, &game.Deleted, &game.UserID, &game.PrimaryPlatform, &game.ArchiveState, &game.RuffleSupport,
+				&game.LogoPath, &game.ScreenshotPath)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, err
+		}
 	}
 
 	// Get add apps
-	rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT * FROM additional_app WHERE parent_game_id = $1`, gameId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var addApp types.AdditionalApp
-		err = rows.Scan(&addApp.ID, &addApp.ApplicationPath, &addApp.AutoRunBefore, &addApp.LaunchCommand, &addApp.Name, &addApp.WaitForExit, &addApp.ParentGameID)
+	if changelogDate != nil {
+		rows, err := dbs.Tx().Query(dbs.Ctx(),
+			`SELECT * FROM changelog_additional_app WHERE parent_game_id = $1 AND date_modified = $2`,
+			gameId, changelogDate,
+		)
 		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
 			return nil, err
 		}
-		game.AddApps = append(game.AddApps, &addApp)
-	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		defer rows.Close()
+		for rows.Next() {
+			var addApp types.AdditionalApp
+			err = rows.Scan(&addApp.ID, &addApp.ApplicationPath, &addApp.AutoRunBefore, &addApp.LaunchCommand, &addApp.Name, &addApp.WaitForExit, &addApp.ParentGameID)
+			if err != nil {
+				utils.LogCtx(dbs.Ctx()).Error(err)
+				return nil, err
+			}
+			game.AddApps = append(game.AddApps, &addApp)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		rows, err := dbs.Tx().Query(dbs.Ctx(),
+			`SELECT * FROM additional_app WHERE parent_game_id = $1`,
+			gameId,
+		)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var addApp types.AdditionalApp
+			err = rows.Scan(&addApp.ID, &addApp.ApplicationPath, &addApp.AutoRunBefore, &addApp.LaunchCommand, &addApp.Name, &addApp.WaitForExit, &addApp.ParentGameID)
+			if err != nil {
+				utils.LogCtx(dbs.Ctx()).Error(err)
+				return nil, err
+			}
+			game.AddApps = append(game.AddApps, &addApp)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// Get game data
-	rows, err = dbs.Tx().Query(dbs.Ctx(), `SELECT id, game_id, title, date_added, sha256,
-       crc32, size, parameters, application_path, launch_command, indexed FROM game_data WHERE game_id = $1
-       ORDER BY game_data.date_added DESC`, gameId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var data types.GameData
-		err = rows.Scan(&data.ID, &data.GameID, &data.Title, &data.DateAdded, &data.SHA256,
-			&data.CRC32, &data.Size, &data.Parameters, &data.ApplicationPath, &data.LaunchCommand, &data.Indexed)
+	if changelogDate != nil {
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT game_id, title, date_added, sha256,
+		crc32, size, parameters, application_path, launch_command FROM changelog_game_data WHERE game_id = $1 AND date_modified = $2
+		ORDER BY changelog_game_data.date_added DESC`, gameId, changelogDate)
 		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
 			return nil, err
 		}
-		game.Data = append(game.Data, &data)
-	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		defer rows.Close()
+		for rows.Next() {
+			var data types.GameData
+			err = rows.Scan(&data.GameID, &data.Title, &data.DateAdded, &data.SHA256,
+				&data.CRC32, &data.Size, &data.Parameters, &data.ApplicationPath, &data.LaunchCommand)
+			if err != nil {
+				return nil, err
+			}
+			game.Data = append(game.Data, &data)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+			return nil, err
+		}
+	} else {
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT id, game_id, title, date_added, sha256,
+		crc32, size, parameters, application_path, launch_command, indexed FROM game_data WHERE game_id = $1
+		ORDER BY game_data.date_added DESC`, gameId)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var data types.GameData
+			err = rows.Scan(&data.ID, &data.GameID, &data.Title, &data.DateAdded, &data.SHA256,
+				&data.CRC32, &data.Size, &data.Parameters, &data.ApplicationPath, &data.LaunchCommand, &data.Indexed)
+			if err != nil {
+				return nil, err
+			}
+			game.Data = append(game.Data, &data)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+			return nil, err
+		}
 	}
 
 	// Get tags
-	rows, err = dbs.Tx().Query(dbs.Ctx(), `SELECT tag.id, coalesce(tag.description, 'none') as description, tag_category.name, tag.date_modified, primary_alias, user_id FROM tag LEFT JOIN tag_category ON tag_category.id = tag.category_id WHERE tag.id IN (
-    	SELECT tag_id FROM game_tags_tag WHERE game_id = $1) ORDER BY primary_alias`, gameId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var data types.Tag
-		err = rows.Scan(&data.ID, &data.Description, &data.Category, &data.DateModified, &data.Name, &data.UserID)
+	if changelogDate != nil {
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT changelog_tag.id, coalesce(changelog_tag.description, 'none') as description, tag_category.name, changelog_tag.date_modified, primary_alias, user_id FROM changelog_tag LEFT JOIN tag_category ON tag_category.id = changelog_tag.category_id WHERE changelog_tag.id IN (
+    	SELECT tag_id FROM changelog_game_tags_tag WHERE game_id = $1 AND date_modified = $2) ORDER BY primary_alias`, gameId, changelogDate)
 		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
 			return nil, err
 		}
-		game.Tags = append(game.Tags, &data)
-	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		defer rows.Close()
+		for rows.Next() {
+			var data types.Tag
+			err = rows.Scan(&data.ID, &data.Description, &data.Category, &data.DateModified, &data.Name, &data.UserID)
+			if err != nil {
+				return nil, err
+			}
+			game.Tags = append(game.Tags, &data)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+			return nil, err
+		}
+	} else {
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT tag.id, coalesce(tag.description, 'none') as description, tag_category.name, tag.date_modified, primary_alias, user_id FROM tag LEFT JOIN tag_category ON tag_category.id = tag.category_id WHERE tag.id IN (
+    	SELECT tag_id FROM game_tags_tag WHERE game_id = $1) ORDER BY primary_alias`, gameId)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var data types.Tag
+			err = rows.Scan(&data.ID, &data.Description, &data.Category, &data.DateModified, &data.Name, &data.UserID)
+			if err != nil {
+				return nil, err
+			}
+			game.Tags = append(game.Tags, &data)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+			return nil, err
+		}
 	}
 
 	// Get platforms
-	rows, err = dbs.Tx().Query(dbs.Ctx(), `SELECT id, date_modified, primary_alias, description, user_id FROM platform WHERE id IN (
-    	SELECT platform_id FROM game_platforms_platform WHERE game_id = $1) ORDER BY primary_alias`, gameId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var data types.Platform
-		err = rows.Scan(&data.ID, &data.DateModified, &data.Name, &data.Description, &data.UserID)
+	if changelogDate != nil {
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT id, date_modified, primary_alias, description, user_id FROM changelog_platform WHERE id IN (
+    	SELECT platform_id FROM changelog_game_platforms_platform WHERE game_id = $1 AND date_modified = $2) ORDER BY primary_alias`, gameId, changelogDate)
 		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
 			return nil, err
 		}
-		game.Platforms = append(game.Platforms, &data)
-	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		defer rows.Close()
+		for rows.Next() {
+			var data types.Tag
+			err = rows.Scan(&data.ID, &data.DateModified, &data.Name, &data.Description, &data.UserID)
+			if err != nil {
+				return nil, err
+			}
+			game.Tags = append(game.Tags, &data)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT id, date_modified, primary_alias, description, user_id FROM platform WHERE id IN (
+    	SELECT platform_id FROM game_platforms_platform WHERE game_id = $1) ORDER BY primary_alias`, gameId)
+		if err != nil {
+			utils.LogCtx(dbs.Ctx()).Error(err)
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var data types.Tag
+			err = rows.Scan(&data.ID, &data.DateModified, &data.Name, &data.Description, &data.UserID)
+			if err != nil {
+				return nil, err
+			}
+			game.Tags = append(game.Tags, &data)
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	return &game, nil
@@ -1206,6 +1337,7 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 	// Build platform lookup map (alias -> ID)
 	platformLookup := make(map[string]int64)
 	for _, platform := range platforms {
+		platformLookup[platform.Name] = platform.ID
 		if platform.Aliases != nil && *platform.Aliases != "" {
 			// Split aliases and map each to the platform ID
 			aliases := strings.Split(*platform.Aliases, ",")
@@ -1221,6 +1353,7 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 	// Build tag lookup map (alias -> ID)
 	tagLookup := make(map[string]int64)
 	for _, tag := range tags {
+		tagLookup[tag.Name] = tag.ID
 		if tag.Aliases != nil && *tag.Aliases != "" {
 			// Split aliases and map each to the tag ID
 			aliases := strings.Split(*tag.Aliases, ",")
@@ -1327,7 +1460,7 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 		return err
 	}
 
-	utils.LogCtx(dbs.Ctx()).Debug("manual logging")
+	utils.LogCtx(dbs.Ctx()).Debug("manual logging and updating ID sequencers")
 
 	// Manual game logging
 	_, err = dbs.Tx().Exec(dbs.Ctx(), `INSERT INTO changelog_additional_app (application_path, auto_run_before, launch_command, name, wait_for_exit, parent_game_id, date_modified) 
@@ -1356,12 +1489,78 @@ func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.L
 	_, err = dbs.Tx().Exec(dbs.Ctx(), `INSERT INTO changelog_game (id, parent_game_id, title, alternate_titles, series,
                             developer, publisher, date_added, date_modified, play_mode, status, notes, source,
                             application_path, launch_command, release_date, version, original_description, language,
-                            library, active_data_id, tags_str, platforms_str, action, reason, user_id, platform_name, archive_state, ruffle_support)
+                            library, active_data_id, tags_str, platforms_str, action, reason, user_id, platform_name, archive_state, ruffle_support, logo_path, screenshot_path)
 		SELECT id, parent_game_id, title, alternate_titles, series,
 		       developer, publisher, date_added, date_modified, play_mode, status, notes, source,
 		       application_path, launch_command, release_date, version, original_description, language,
-		       library, active_data_id, tags_str, platforms_str, action, reason, user_id, platform_name, archive_state, ruffle_support
+		       library, active_data_id, tags_str, platforms_str, action, reason, user_id, platform_name, archive_state, ruffle_support, logo_path, screenshot_path
 		FROM game`)
+	if err != nil {
+		return err
+	}
+
+	// Update ID sequencers to highest value
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `SELECT SETVAL('public.changelog_platform_id_seq', COALESCE(MAX(id), 1) ) FROM public.changelog_platform;
+    SELECT SETVAL('public.changelog_tag_id_seq', COALESCE(MAX(id), 1) ) FROM public.changelog_tag;
+    SELECT SETVAL('public.game_data_id_seq', COALESCE(MAX(id), 1) ) FROM public.game_data;
+    SELECT SETVAL('public.platform_id_seq', COALESCE(MAX(id), 1) ) FROM public.platform;
+    SELECT SETVAL('public.tag_category_id_seq', COALESCE(MAX(id), 1) ) FROM public.tag_category;
+    SELECT SETVAL('public.tag_id_seq', COALESCE(MAX(id), 1) ) FROM public.tag;
+  `)
+	if err != nil {
+		return err
+	}
+
+	utils.LogCtx(dbs.Ctx()).Debug("updating tag and platform string arrays")
+
+	// Update tag and platform string lists in games
+	_, err = dbs.Tx().Exec(dbs.Ctx(), `SET session_replication_role = replica;
+		UPDATE game
+		SET platforms_str = coalesce(
+				(
+						SELECT string_agg(
+													(SELECT primary_alias FROM platform WHERE id = p.platform_id), '; '
+											)
+						FROM game_platforms_platform p
+						WHERE p.game_id = game.id
+				), ''
+		) WHERE 1=1;
+
+		UPDATE changelog_game
+		SET platforms_str = coalesce(
+				(
+						SELECT string_agg(
+													(SELECT primary_alias FROM platform WHERE id = p.platform_id), '; '
+											)
+						FROM game_platforms_platform p
+						WHERE p.game_id = changelog_game.id
+				), ''
+		) WHERE 1=1;
+
+		UPDATE game
+		SET tags_str = coalesce(
+				(
+						SELECT string_agg(
+													(SELECT primary_alias FROM tag WHERE id = t.tag_id), '; '
+											)
+						FROM game_tags_tag t
+						WHERE t.game_id = game.id
+				), ''
+		) WHERE 1=1;
+
+
+		UPDATE changelog_game
+		SET tags_str = coalesce(
+				(
+						SELECT string_agg(
+													(SELECT primary_alias FROM tag WHERE id = t.tag_id), '; '
+											)
+						FROM game_tags_tag t
+						WHERE t.game_id = changelog_game.id
+				), ''
+		) WHERE 1=1;
+
+		SET session_replication_role = DEFAULT;`)
 	if err != nil {
 		return err
 	}
@@ -1972,7 +2171,7 @@ func (d *postgresDAL) AddSubmissionFromValidator(dbs PGDBSession, uid int64, vr 
 func (d *postgresDAL) GetGameRevisionInfo(dbs PGDBSession, gameId string) ([]*types.RevisionInfo, error) {
 	revisions := make([]*types.RevisionInfo, 0)
 
-	rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT date_modified, action, reason, user_id FROM changelog_game WHERE id = $1`, gameId)
+	rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT date_modified, action, reason, user_id FROM changelog_game WHERE id = $1 ORDER BY date_modified DESC`, gameId)
 	if err != nil {
 		return nil, err
 	}
@@ -1982,7 +2181,17 @@ func (d *postgresDAL) GetGameRevisionInfo(dbs PGDBSession, gameId string) ([]*ty
 		if err != nil {
 			return nil, err
 		}
+		if err != nil {
+			return nil, err
+		}
 		revisions = append(revisions, revision)
+	}
+
+	for _, revision := range revisions {
+		revision.Game, err = d.GetChangelogGame(dbs, gameId, revision.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return revisions, nil
@@ -2049,38 +2258,33 @@ func (d *postgresDAL) DeleteGame(dbs PGDBSession, gameId string, uid int64, reas
 	}
 
 	// Disable Image Files
-	logoPath := fmt.Sprintf("%s/Logos/%s/%s/%s.png", imagesPath, gameId[:2], gameId[2:4], gameId)
-	ssPath := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png", imagesPath, gameId[:2], gameId[2:4], gameId)
+	var imagePaths []string
 
-	if _, err := os.Stat(logoPath); err == nil {
-		newLogoPath := fmt.Sprintf("%s/Logos/%s/%s/%s.png", deletedImagesPath, gameId[:2], gameId[2:4], gameId)
-		err = os.MkdirAll(filepath.Dir(newLogoPath), 0755)
-		if err != nil {
-			return err
-		}
-		err = utils.CopyFile(logoPath, newLogoPath)
-		if err != nil {
-			return err
-		}
-		err = os.Remove(logoPath)
-		if err != nil {
-			return err
-		}
+	revisions, err := d.GetGameRevisionInfo(dbs, gameId)
+	if err != nil {
+		return err
+	}
+	for _, revision := range revisions {
+		imagePaths = append(imagePaths, revision.Game.LogoPath)
+		imagePaths = append(imagePaths, revision.Game.ScreenshotPath)
 	}
 
-	if _, err := os.Stat(ssPath); err == nil {
-		newSSPath := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png", deletedImagesPath, gameId[:2], gameId[2:4], gameId)
-		err = os.MkdirAll(filepath.Dir(newSSPath), 0755)
-		if err != nil {
-			return err
-		}
-		err = utils.CopyFile(ssPath, newSSPath)
-		if err != nil {
-			return err
-		}
-		err = os.Remove(newSSPath)
-		if err != nil {
-			return err
+	for _, imagePath := range imagePaths {
+		oldFilePath := fmt.Sprintf("%s/%s", imagesPath, imagePath)
+		if _, err := os.Stat(oldFilePath); err == nil {
+			newFilePath := fmt.Sprintf("%s/%s", deletedImagesPath, imagePath)
+			err = os.MkdirAll(filepath.Dir(newFilePath), 0755)
+			if err != nil {
+				return err
+			}
+			err = utils.CopyFile(oldFilePath, newFilePath)
+			if err != nil {
+				return err
+			}
+			err = os.Remove(oldFilePath)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -2128,39 +2332,33 @@ func (d *postgresDAL) RestoreGame(dbs PGDBSession, gameId string, uid int64, rea
 		}
 	}
 
-	// Enable Image Files
-	logoPath := fmt.Sprintf("%s/Logos/%s/%s/%s.png", deletedImagesPath, gameId[:2], gameId[2:4], gameId)
-	ssPath := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png", deletedImagesPath, gameId[:2], gameId[2:4], gameId)
+	var imagePaths []string
 
-	if _, err := os.Stat(logoPath); err == nil {
-		newLogoPath := fmt.Sprintf("%s/Logos/%s/%s/%s.png", imagesPath, gameId[:2], gameId[2:4], gameId)
-		err = os.MkdirAll(filepath.Dir(newLogoPath), 0755)
-		if err != nil {
-			return err
-		}
-		err = utils.CopyFile(logoPath, newLogoPath)
-		if err != nil {
-			return err
-		}
-		err = os.Remove(logoPath)
-		if err != nil {
-			return err
-		}
+	revisions, err := d.GetGameRevisionInfo(dbs, gameId)
+	if err != nil {
+		return err
+	}
+	for _, revision := range revisions {
+		imagePaths = append(imagePaths, revision.Game.LogoPath)
+		imagePaths = append(imagePaths, revision.Game.ScreenshotPath)
 	}
 
-	if _, err := os.Stat(ssPath); err == nil {
-		newSSPath := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png", imagesPath, gameId[:2], gameId[2:4], gameId)
-		err = os.MkdirAll(filepath.Dir(newSSPath), 0755)
-		if err != nil {
-			return err
-		}
-		err = utils.CopyFile(ssPath, newSSPath)
-		if err != nil {
-			return err
-		}
-		err = os.Remove(ssPath)
-		if err != nil {
-			return err
+	for _, imagePath := range imagePaths {
+		oldFilePath := fmt.Sprintf("%s/%s", deletedImagesPath, imagePath)
+		if _, err := os.Stat(oldFilePath); err == nil {
+			newFilePath := fmt.Sprintf("%s/%s", imagesPath, imagePath)
+			err = os.MkdirAll(filepath.Dir(newFilePath), 0755)
+			if err != nil {
+				return err
+			}
+			err = utils.CopyFile(oldFilePath, newFilePath)
+			if err != nil {
+				return err
+			}
+			err = os.Remove(oldFilePath)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

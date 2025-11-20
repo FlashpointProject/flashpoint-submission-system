@@ -373,6 +373,14 @@ func (s *SiteService) GetGamePageData(ctx context.Context, gameId string, imageC
 		utils.LogCtx(ctx).Error(err)
 		return nil, perr("failed to populate revision info with user details", http.StatusNotFound)
 	}
+
+	// Generate diff lists
+	err = PopulateRevisionDiffs(revisions)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, perr("failed to populate revision info generated diffs", http.StatusInternalServerError)
+	}
+
 	redirectsTo, err := s.pgdal.GetGameRedirectTo(dbs, gameId)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -4049,4 +4057,65 @@ func (s *SiteService) GetActivityEvents(ctx context.Context, filter *types.Activ
 	}
 	defer pgdbs.Rollback()
 	return s.pgdal.GetActivityEvents(pgdbs, filter)
+}
+
+func PopulateRevisionDiffs(revisions []*types.RevisionInfo) error {
+	if len(revisions) < 2 {
+		return nil
+	}
+
+	for i := 0; i < len(revisions)-1; i++ {
+		current := revisions[i]
+		previous := revisions[i+1]
+
+		diff := &types.RevisionDiff{}
+		diff.Title = CompareFieldString(current.Game.Title, previous.Game.Title)
+		diff.AlternateTitles = CompareFieldString(current.Game.AlternateTitles, previous.Game.AlternateTitles)
+		diff.Series = CompareFieldString(current.Game.Series, previous.Game.Series)
+		diff.Developer = CompareFieldString(current.Game.Developer, previous.Game.Developer)
+		diff.Publisher = CompareFieldString(current.Game.Publisher, previous.Game.Publisher)
+		diff.PrimaryPlatform = CompareFieldString(current.Game.PrimaryPlatform, previous.Game.PrimaryPlatform)
+		// todo: platforms
+		diff.PlayMode = CompareFieldString(current.Game.PlayMode, previous.Game.PlayMode)
+		diff.Status = CompareFieldString(current.Game.Status, previous.Game.Status)
+		diff.Notes = CompareFieldString(current.Game.Notes, previous.Game.Notes)
+		diff.Source = CompareFieldString(current.Game.Source, previous.Game.Source)
+		diff.ApplicationPath = CompareFieldString(current.Game.ApplicationPath, previous.Game.ApplicationPath)
+		diff.LaunchCommand = CompareFieldString(current.Game.LaunchCommand, previous.Game.LaunchCommand)
+		diff.ReleaseDate = CompareFieldString(current.Game.ReleaseDate, previous.Game.ReleaseDate)
+		diff.Version = CompareFieldString(current.Game.Version, previous.Game.Version)
+		diff.OriginalDesc = CompareFieldString(current.Game.OriginalDesc, previous.Game.OriginalDesc)
+		diff.Language = CompareFieldString(current.Game.Language, previous.Game.Language)
+		diff.Library = CompareFieldString(current.Game.Library, previous.Game.Library)
+		// todo: add apps
+		diff.ActiveDataID = CompareFieldNumber(current.Game.ActiveDataID, previous.Game.ActiveDataID)
+		// todo: game data
+		diff.RuffleSupport = CompareFieldString(current.Game.RuffleSupport, previous.Game.RuffleSupport)
+		diff.LogoPath = CompareFieldString(current.Game.LogoPath, previous.Game.LogoPath)
+		diff.ScreenshotPath = CompareFieldString(current.Game.ScreenshotPath, previous.Game.ScreenshotPath)
+
+		current.Diff = diff
+	}
+
+	return nil
+}
+
+func CompareFieldString(cur string, prev string) *types.RevisionDiffField {
+	if prev != cur {
+		return &types.RevisionDiffField{
+			Previous: prev,
+			Current:  cur,
+		}
+	}
+	return nil
+}
+
+func CompareFieldNumber(cur *int, prev *int) *types.RevisionDiffFieldNumber {
+	if (prev == nil && cur != nil) || (prev != nil && cur == nil) || (prev != nil && cur != nil && *prev != *cur) {
+		return &types.RevisionDiffFieldNumber{
+			Previous: prev,
+			Current:  cur,
+		}
+	}
+	return nil
 }

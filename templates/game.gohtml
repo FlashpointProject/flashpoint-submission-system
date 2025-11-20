@@ -454,6 +454,20 @@
                         {{range $i, $line := (splitMultilineText .Reason) }}{{if gt $i 0}}
                             <br>{{end}}{{$line}}{{end}}
                     </div>
+                    <div>
+                        <pre id="diff-output-{{ .CreatedAt }}"></pre>
+                        <script>
+                            (() => {
+                                const diff = parseDiff({{ .Diff }});
+                                console.log(diff);
+                                if (diff) {
+                                    const tableElem = createDiffTable(diff);
+                                    const preElem = document.getElementById("diff-output-{{ .CreatedAt }}");
+                                    preElem.parentNode.appendChild(tableElem);
+                                }
+                            })()
+                        </script>
+                    </div>
                 </div>
             </div>
         {{end}}

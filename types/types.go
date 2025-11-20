@@ -957,6 +957,48 @@ type RevisionInfo struct {
 	AvatarURL string
 	AuthorID  int64
 	Username  string
+	Game      *Game
+	Diff      *RevisionDiff
+}
+
+type RevisionDiff struct {
+	ParentGameID    *RevisionDiffField
+	Title           *RevisionDiffField
+	AlternateTitles *RevisionDiffField
+	Series          *RevisionDiffField
+	Developer       *RevisionDiffField
+	Publisher       *RevisionDiffField
+	PrimaryPlatform *RevisionDiffField
+	Platforms       *RevisionDiffField // String representation via custom function
+	PlayMode        *RevisionDiffField
+	Status          *RevisionDiffField
+	Notes           *RevisionDiffField
+	Tags            *RevisionDiffField // String representation via custom function
+	Source          *RevisionDiffField
+	ApplicationPath *RevisionDiffField
+	LaunchCommand   *RevisionDiffField
+	ReleaseDate     *RevisionDiffField
+	Version         *RevisionDiffField
+	OriginalDesc    *RevisionDiffField
+	Language        *RevisionDiffField
+	Library         *RevisionDiffField
+	AddApps         *RevisionDiffField // String representation via custom function
+	ActiveDataID    *RevisionDiffFieldNumber
+	Data            *RevisionDiffField // String representation via custom function
+	ArchiveState    *RevisionDiffField
+	RuffleSupport   *RevisionDiffField
+	LogoPath        *RevisionDiffField
+	ScreenshotPath  *RevisionDiffField
+}
+
+type RevisionDiffField struct {
+	Previous string `json:"previous"`
+	Current  string `json:"current"`
+}
+
+type RevisionDiffFieldNumber struct {
+	Previous *int `json:"previous"`
+	Current  *int `json:"current"`
 }
 
 type ArchiveState int8
