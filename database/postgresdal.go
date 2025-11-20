@@ -674,8 +674,12 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 
 	// Get tags
 	if changelogDate != nil {
-		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT changelog_tag.id, coalesce(changelog_tag.description, 'none') as description, tag_category.name, changelog_tag.date_modified, primary_alias, user_id FROM changelog_tag LEFT JOIN tag_category ON tag_category.id = changelog_tag.category_id WHERE changelog_tag.id IN (
-    	SELECT tag_id FROM changelog_game_tags_tag WHERE game_id = $1 AND date_modified = $2) ORDER BY primary_alias`, gameId, changelogDate)
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `
+			SELECT DISTINCT ON (changelog_tag.id) changelog_tag.id, coalesce(changelog_tag.description, 'none') as description, tag_category.name, changelog_tag.date_modified, primary_alias, user_id
+			FROM changelog_tag LEFT JOIN tag_category ON tag_category.id = changelog_tag.category_id
+			WHERE changelog_tag.id IN (
+    		SELECT tag_id FROM changelog_game_tags_tag WHERE game_id = $1 AND date_modified = $2
+			) AND changelog_tag.date_modified <= $2 ORDER BY changelog_tag.id, changelog_tag.date_modified DESC`, gameId, changelogDate)
 		if err != nil {
 			utils.LogCtx(dbs.Ctx()).Error(err)
 			return nil, err
@@ -717,8 +721,12 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 
 	// Get platforms
 	if changelogDate != nil {
-		rows, err := dbs.Tx().Query(dbs.Ctx(), `SELECT id, date_modified, primary_alias, description, user_id FROM changelog_platform WHERE id IN (
-    	SELECT platform_id FROM changelog_game_platforms_platform WHERE game_id = $1 AND date_modified = $2) ORDER BY primary_alias`, gameId, changelogDate)
+		rows, err := dbs.Tx().Query(dbs.Ctx(), `
+			SELECT DISTINCT ON (id) id, date_modified, primary_alias, description, user_id
+			FROM changelog_platform
+			WHERE id IN (
+    		SELECT platform_id FROM changelog_game_platforms_platform WHERE game_id = $1 AND date_modified = $2
+			) AND date_modified <= $2 ORDER BY id, date_modified DESC`, gameId, changelogDate)
 		if err != nil {
 			utils.LogCtx(dbs.Ctx()).Error(err)
 			return nil, err
