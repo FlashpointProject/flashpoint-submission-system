@@ -384,11 +384,11 @@ func (s *SiteService) GetGamePageData(ctx context.Context, gameId string, imageC
 		return revisions[i].CreatedAt.After(revisions[j].CreatedAt)
 	})
 
-	logoUrl := fmt.Sprintf("%s/Logos/%s/%s/%s.png", imageCdn, game.ID[:2], game.ID[2:4], game.ID)
+	logoUrl := fmt.Sprintf("%s/%s", imageCdn, game.LogoPath)
 	if compressedImages {
 		logoUrl = logoUrl + "?type=jpg"
 	}
-	ssUrl := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png", imageCdn, game.ID[:2], game.ID[2:4], game.ID)
+	ssUrl := fmt.Sprintf("%s/%s", imageCdn, game.ScreenshotPath)
 	if compressedImages {
 		ssUrl = ssUrl + "?type=jpg"
 	}

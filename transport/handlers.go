@@ -1091,7 +1091,11 @@ func (a *App) HandleGameLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logoPath := fmt.Sprintf("%s/Logos/%s/%s/%s.png", a.Conf.ImagesDir, gameId[:2], gameId[2:4], gameId)
+	milliDate := time.Now().UnixMilli()
+
+	// Create a new image file
+	game.Game.LogoPath = fmt.Sprintf("Logos/%s/%s/%s-%d.png", gameId[:2], gameId[2:4], gameId, milliDate)
+	logoPath := fmt.Sprintf("%s/%s", a.Conf.ImagesDir, game.Game.LogoPath)
 	if err := os.MkdirAll(filepath.Dir(logoPath), os.ModePerm); err != nil {
 		http.Error(w, "Failed to create directory", http.StatusInternalServerError)
 		return
@@ -1117,22 +1121,15 @@ func (a *App) HandleGameLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.Service.EmitGameLogoUpdateEvent(ctx, uid, gameId); err != nil {
+	// Save logo path
+	game.Game.Reason = "Updated Logo"
+	if err := a.Service.SaveGame(ctx, game.Game); err != nil {
 		utils.LogCtx(ctx).Error(err)
+		return
 	}
 
-	url := fmt.Sprintf("%s/Logos/%s/%s/%s.png",
-		a.Conf.ImagesCdn, gameId[:2], gameId[2:4], gameId)
-	// Clear the image microservice cached file
-	client := &http.Client{}
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		http.Error(w, "Updated file, but failed to clear image cache", http.StatusInternalServerError)
-	}
-	req.Header.Set("Authorization", "Bearer "+a.Conf.ImagesCdnApiKey)
-	_, err = client.Do(req)
-	if err != nil {
-		http.Error(w, "Updated file, but failed to clear image cache", http.StatusInternalServerError)
+	if err := a.Service.EmitGameLogoUpdateEvent(ctx, uid, gameId); err != nil {
+		utils.LogCtx(ctx).Error(err)
 	}
 
 	// File saved successfully
@@ -1193,7 +1190,10 @@ func (a *App) HandleGameScreenshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	screenshotPath := fmt.Sprintf("%s/Screenshots/%s/%s/%s.png", a.Conf.ImagesDir, gameId[:2], gameId[2:4], gameId)
+	milliDate := time.Now().UnixMilli()
+
+	game.Game.ScreenshotPath = fmt.Sprintf("Screenshots/%s/%s/%s-%d.png", gameId[:2], gameId[2:4], gameId, milliDate)
+	screenshotPath := fmt.Sprintf("%s/%s", a.Conf.ImagesDir, game.Game.ScreenshotPath)
 	if err := os.MkdirAll(filepath.Dir(screenshotPath), os.ModePerm); err != nil {
 		http.Error(w, "Failed to create directory", http.StatusInternalServerError)
 		return
@@ -1216,6 +1216,12 @@ func (a *App) HandleGameScreenshot(w http.ResponseWriter, r *http.Request) {
 	// Copy the contents of the uploaded file to the new file
 	if _, err := io.Copy(dst, file); err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+
+	// Save screenshot path
+	if err := a.Service.SaveGame(ctx, game.Game); err != nil {
+		utils.LogCtx(ctx).Error(err)
 		return
 	}
 

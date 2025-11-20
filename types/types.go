@@ -447,6 +447,8 @@ type GameDump struct {
 	ActiveDataID    *int             `json:"active_data_id,omitempty"`
 	Data            []*GameData      `json:"data,omitempty"`
 	RuffleSupport   string           `json:"ruffle_support,omitempty"`
+	LogoPath        string           `json:"logo_path,omitempty"`
+	ScreenshotPath  string           `json:"screenshot_path,omitempty"`
 	Action          string           `json:"action"`
 	Reason          string           `json:"reason"`
 	Deleted         bool
@@ -486,6 +488,8 @@ type Game struct {
 	Reason          string           `json:"reason" example:"User changed metadata"`
 	ArchiveState    ArchiveState     `json:"archive_state" example:"2"`
 	RuffleSupport   string           `json:"ruffle_support" example:"Standalone"`
+	LogoPath        string           `json:"logo_path"`
+	ScreenshotPath  string           `json:"screenshot_path"`
 	Deleted         bool
 	UserID          int64 `example:"529007944449261600"`
 } // @name Game
