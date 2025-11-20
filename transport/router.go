@@ -349,13 +349,17 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 		Methods("GET")
 
 	router.Handle(
-		fmt.Sprintf("/web/game/{%s}/revision/{%s}", constants.ResourceKeyGameID, constants.ResourceKeyGameRevision),
-		http.HandlerFunc(a.RequestWeb(f, false))).
-		Methods("GET")
-
-	router.Handle(
 		fmt.Sprintf("/api/game/{%s}", constants.ResourceKeyGameID),
 		http.HandlerFunc(a.RequestJSON(f, true))).
+		Methods("GET")
+
+	f = a.UserAuthMux(
+		a.RequestScope(a.HandleGameChangelog, types.AuthScopeGameRead),
+		muxAny(isStaff, isTrialEditor))
+
+	router.Handle(
+		fmt.Sprintf("/api/game/{%s}/changelog", constants.ResourceKeyGameID),
+		http.HandlerFunc(a.RequestJSON(f, false))).
 		Methods("GET")
 
 	f = a.UserAuthMux(

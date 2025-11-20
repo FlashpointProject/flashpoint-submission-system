@@ -331,7 +331,42 @@ func (s *SiteService) RestoreGame(ctx context.Context, gameId string, reason str
 	return nil
 }
 
-func (s *SiteService) GetGamePageData(ctx context.Context, gameId string, revisionDate string) (*types.GamePageData, error) {
+func (s *SiteService) GetGameChangelog(ctx context.Context, gameId string) ([]*types.RevisionInfo, error) {
+	dbs, err := s.pgdal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+	defer dbs.Rollback()
+	msqldbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+	defer msqldbs.Rollback()
+
+	revisions, err := s.pgdal.GetGameRevisionInfo(dbs, gameId)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, perr("failed to find revision info", http.StatusNotFound)
+	}
+	err = s.dal.PopulateRevisionInfo(msqldbs, revisions)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, perr("failed to populate revision info with user details", http.StatusNotFound)
+	}
+
+	// Generate diff lists
+	err = PopulateRevisionDiffs(revisions)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, perr("failed to populate revision info generated diffs", http.StatusInternalServerError)
+	}
+
+	return revisions, nil
+}
+
+func (s *SiteService) GetGamePageData(ctx context.Context, gameId string) (*types.GamePageData, error) {
 	dbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)

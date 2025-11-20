@@ -955,44 +955,44 @@ func (mlp MissingLaunchParams) Error() string {
 }
 
 type RevisionInfo struct {
-	Action    string
-	Reason    string
-	CreatedAt time.Time
-	AvatarURL string
-	AuthorID  int64
-	Username  string
-	Game      *Game
-	Diff      *RevisionDiff
+	Action    string        `json:"action"`
+	Reason    string        `json:"reason"`
+	CreatedAt time.Time     `json:"created_at"`
+	AvatarURL string        `json:"avatar_url"`
+	AuthorID  int64         `json:"author_id"`
+	Username  string        `json:"username"`
+	Game      *Game         `json:"game"`
+	Diff      *RevisionDiff `json:"diff"`
 }
 
 type RevisionDiff struct {
-	ParentGameID    *RevisionDiffField
-	Title           *RevisionDiffField
-	AlternateTitles *RevisionDiffField
-	Series          *RevisionDiffField
-	Developer       *RevisionDiffField
-	Publisher       *RevisionDiffField
-	PrimaryPlatform *RevisionDiffField
-	Platforms       *RevisionDiffField // String representation via custom function
-	PlayMode        *RevisionDiffField
-	Status          *RevisionDiffField
-	Notes           *RevisionDiffField
-	Tags            *RevisionDiffField // String representation via custom function
-	Source          *RevisionDiffField
-	ApplicationPath *RevisionDiffField
-	LaunchCommand   *RevisionDiffField
-	ReleaseDate     *RevisionDiffField
-	Version         *RevisionDiffField
-	OriginalDesc    *RevisionDiffField
-	Language        *RevisionDiffField
-	Library         *RevisionDiffField
-	AddApps         *RevisionDiffField // String representation via custom function
-	ActiveDataID    *RevisionDiffFieldNumber
-	Data            *RevisionDiffField // String representation via custom function
-	ArchiveState    *RevisionDiffField
-	RuffleSupport   *RevisionDiffField
-	LogoPath        *RevisionDiffField
-	ScreenshotPath  *RevisionDiffField
+	ParentGameID    *RevisionDiffField       `json:"parent_game_id,omitempty"`
+	Title           *RevisionDiffField       `json:"title,omitempty"`
+	AlternateTitles *RevisionDiffField       `json:"alternate_titles,omitempty"`
+	Series          *RevisionDiffField       `json:"series,omitempty"`
+	Developer       *RevisionDiffField       `json:"developer,omitempty"`
+	Publisher       *RevisionDiffField       `json:"publisher,omitempty"`
+	PrimaryPlatform *RevisionDiffField       `json:"primary_platform,omitempty"`
+	Platforms       *RevisionDiffField       `json:"platforms,omitempty"`
+	PlayMode        *RevisionDiffField       `json:"play_mode,omitempty"`
+	Status          *RevisionDiffField       `json:"status,omitempty"`
+	Notes           *RevisionDiffField       `json:"notes,omitempty"`
+	Tags            *RevisionDiffField       `json:"tags,omitempty"`
+	Source          *RevisionDiffField       `json:"source,omitempty"`
+	ApplicationPath *RevisionDiffField       `json:"application_path,omitempty"`
+	LaunchCommand   *RevisionDiffField       `json:"launch_command,omitempty"`
+	ReleaseDate     *RevisionDiffField       `json:"release_date,omitempty"`
+	Version         *RevisionDiffField       `json:"version,omitempty"`
+	OriginalDesc    *RevisionDiffField       `json:"original_desc,omitempty"`
+	Language        *RevisionDiffField       `json:"language,omitempty"`
+	Library         *RevisionDiffField       `json:"library,omitempty"`
+	AddApps         *RevisionDiffField       `json:"add_apps,omitempty"`
+	ActiveDataID    *RevisionDiffFieldNumber `json:"active_data_id,omitempty"`
+	Data            *RevisionDiffField       `json:"data,omitempty"`
+	ArchiveState    *RevisionDiffField       `json:"archive_state,omitempty"`
+	RuffleSupport   *RevisionDiffField       `json:"ruffle_support,omitempty"`
+	LogoPath        *RevisionDiffField       `json:"logo_path,omitempty"`
+	ScreenshotPath  *RevisionDiffField       `json:"screenshot_path,omitempty"`
 }
 
 type RevisionDiffField struct {
@@ -1003,6 +1003,10 @@ type RevisionDiffField struct {
 type RevisionDiffFieldNumber struct {
 	Previous *int `json:"previous"`
 	Current  *int `json:"current"`
+}
+
+type RevisionPageData struct {
+	Revisions []*RevisionInfo `json:"revisions"`
 }
 
 type ArchiveState int8

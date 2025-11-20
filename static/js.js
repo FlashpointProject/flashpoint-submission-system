@@ -891,8 +891,6 @@ function createDiffTable(diff, outputId) {
         th.textContent = text;
         headerRow.appendChild(th);
     });
-
-
     
     const tbody = table.createTBody();
     Object.keys(diff).forEach(key => {

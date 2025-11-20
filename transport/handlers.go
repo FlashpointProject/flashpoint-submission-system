@@ -755,6 +755,24 @@ func (a *App) HandleTagEditPage(w http.ResponseWriter, r *http.Request) {
 		"templates/tag-edit.gohtml")
 }
 
+func (a *App) HandleGameChangelog(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	params := mux.Vars(r)
+	gameId := params[constants.ResourceKeyGameID]
+
+	changelog, err := a.Service.GetGameChangelog(ctx, gameId)
+	if err != nil {
+		writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	pageData := types.RevisionPageData{
+		Revisions: changelog,
+	}
+
+	writeResponse(ctx, w, pageData, http.StatusOK)
+}
+
 // @Summary Game Info
 // @Description Find detailed info for a game
 // @Tags Game
@@ -767,7 +785,6 @@ func (a *App) HandleGamePage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	params := mux.Vars(r)
 	gameId := params[constants.ResourceKeyGameID]
-	revisionDate := params[constants.ResourceKeyGameRevision]
 
 	// Handle POST changes
 	if utils.RequestType(ctx) != constants.RequestWeb && r.Method == "POST" {
@@ -789,7 +806,7 @@ func (a *App) HandleGamePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pageData, err := a.Service.GetGamePageData(ctx, gameId, revisionDate)
+	pageData, err := a.Service.GetGamePageData(ctx, gameId)
 	if err != nil {
 		writeError(ctx, w, err)
 		return
@@ -1043,9 +1060,8 @@ func (a *App) HandleGameLogo(w http.ResponseWriter, r *http.Request) {
 	uid := utils.UserID(ctx)
 	params := mux.Vars(r)
 	gameId := params[constants.ResourceKeyGameID]
-	revisionDate := ""
 
-	game, err := a.Service.GetGamePageData(ctx, gameId, revisionDate)
+	game, err := a.Service.GetGamePageData(ctx, gameId)
 	if err != nil {
 		http.Error(w, "Game does not exist", http.StatusNotFound)
 		return
@@ -1142,9 +1158,8 @@ func (a *App) HandleGameScreenshot(w http.ResponseWriter, r *http.Request) {
 	uid := utils.UserID(ctx)
 	params := mux.Vars(r)
 	gameId := params[constants.ResourceKeyGameID]
-	revisionDate := ""
 
-	game, err := a.Service.GetGamePageData(ctx, gameId, revisionDate)
+	game, err := a.Service.GetGamePageData(ctx, gameId)
 	if err != nil {
 		http.Error(w, "Game does not exist", http.StatusNotFound)
 		return
