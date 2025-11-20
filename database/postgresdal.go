@@ -535,7 +535,6 @@ func (d *postgresDAL) GetGame(dbs PGDBSession, gameId string) (*types.Game, erro
 
 func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *time.Time) (*types.Game, error) {
 	var game types.Game
-	utils.LogCtx(dbs.Ctx()).Debug(fmt.Sprintf("Finding %s", gameId))
 
 	// Get game
 	if changelogDate != nil {
