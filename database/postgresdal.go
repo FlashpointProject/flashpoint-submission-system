@@ -732,12 +732,12 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var data types.Tag
+			var data types.Platform
 			err = rows.Scan(&data.ID, &data.DateModified, &data.Name, &data.Description, &data.UserID)
 			if err != nil {
 				return nil, err
 			}
-			game.Tags = append(game.Tags, &data)
+			game.Platforms = append(game.Platforms, &data)
 		}
 		if err := rows.Err(); err != nil {
 			log.Fatal(err)
@@ -751,12 +751,12 @@ func (d *postgresDAL) _GetGame(dbs PGDBSession, gameId string, changelogDate *ti
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var data types.Tag
+			var data types.Platform
 			err = rows.Scan(&data.ID, &data.DateModified, &data.Name, &data.Description, &data.UserID)
 			if err != nil {
 				return nil, err
 			}
-			game.Tags = append(game.Tags, &data)
+			game.Platforms = append(game.Platforms, &data)
 		}
 		if err := rows.Err(); err != nil {
 			log.Fatal(err)
