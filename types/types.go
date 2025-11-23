@@ -977,7 +977,7 @@ type RevisionDiff struct {
 	PlayMode        *RevisionDiffField       `json:"play_mode,omitempty"`
 	Status          *RevisionDiffField       `json:"status,omitempty"`
 	Notes           *RevisionDiffField       `json:"notes,omitempty"`
-	Tags            *RevisionDiffField       `json:"tags,omitempty"`
+	Tags            *RevisionDiffTaggedField `json:"tags,omitempty"`
 	Source          *RevisionDiffField       `json:"source,omitempty"`
 	ApplicationPath *RevisionDiffField       `json:"application_path,omitempty"`
 	LaunchCommand   *RevisionDiffField       `json:"launch_command,omitempty"`
@@ -987,7 +987,6 @@ type RevisionDiff struct {
 	Language        *RevisionDiffField       `json:"language,omitempty"`
 	Library         *RevisionDiffField       `json:"library,omitempty"`
 	AddApps         *RevisionDiffField       `json:"add_apps,omitempty"`
-	ActiveDataID    *RevisionDiffFieldNumber `json:"active_data_id,omitempty"`
 	Data            *RevisionDiffField       `json:"data,omitempty"`
 	ArchiveState    *RevisionDiffField       `json:"archive_state,omitempty"`
 	RuffleSupport   *RevisionDiffField       `json:"ruffle_support,omitempty"`
@@ -998,6 +997,13 @@ type RevisionDiff struct {
 type RevisionDiffField struct {
 	Previous string `json:"previous"`
 	Current  string `json:"current"`
+}
+
+type RevisionDiffTaggedField struct {
+	Previous []string `json:"previous"`
+	Current  []string `json:"current"`
+	Added    []string `json:"added"`
+	Removed  []string `json:"removed"`
 }
 
 type RevisionDiffFieldNumber struct {

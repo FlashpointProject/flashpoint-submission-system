@@ -3557,6 +3557,12 @@ func (s *SiteService) SaveGame(ctx context.Context, game *types.Game) error {
 		game.LogoPath = existingGame.LogoPath
 		game.ScreenshotPath = existingGame.ScreenshotPath
 	}
+	if game.LogoPath == "" {
+		game.LogoPath = existingGame.LogoPath
+	}
+	if game.ScreenshotPath == "" {
+		game.ScreenshotPath = existingGame.ScreenshotPath
+	}
 	game.ArchiveState = existingGame.ArchiveState
 
 	if err := s.EmitGameSaveEvent(pgdbs, uid, game.ID); err != nil {
@@ -4234,6 +4240,7 @@ func PopulateRevisionDiffs(revisions []*types.RevisionInfo) error {
 		diff.PlayMode = CompareFieldString(current.Game.PlayMode, previous.Game.PlayMode)
 		diff.Status = CompareFieldString(current.Game.Status, previous.Game.Status)
 		diff.Notes = CompareFieldString(current.Game.Notes, previous.Game.Notes)
+		diff.Tags = CompareFieldTag(current.Game.Tags, previous.Game.Tags)
 		diff.Source = CompareFieldString(current.Game.Source, previous.Game.Source)
 		diff.ApplicationPath = CompareFieldString(current.Game.ApplicationPath, previous.Game.ApplicationPath)
 		diff.LaunchCommand = CompareFieldString(current.Game.LaunchCommand, previous.Game.LaunchCommand)
@@ -4243,7 +4250,6 @@ func PopulateRevisionDiffs(revisions []*types.RevisionInfo) error {
 		diff.Language = CompareFieldString(current.Game.Language, previous.Game.Language)
 		diff.Library = CompareFieldString(current.Game.Library, previous.Game.Library)
 		// todo: add apps
-		diff.ActiveDataID = CompareFieldNumber(current.Game.ActiveDataID, previous.Game.ActiveDataID)
 		// todo: game data
 		diff.RuffleSupport = CompareFieldString(current.Game.RuffleSupport, previous.Game.RuffleSupport)
 		diff.LogoPath = CompareFieldString(current.Game.LogoPath, previous.Game.LogoPath)
@@ -4273,4 +4279,61 @@ func CompareFieldNumber(cur *int, prev *int) *types.RevisionDiffFieldNumber {
 		}
 	}
 	return nil
+}
+
+func CompareFieldTag(cur []*types.Tag, prev []*types.Tag) *types.RevisionDiffTaggedField {
+	// Create maps for O(1) lookup by ID
+	prevMap := make(map[int64]*types.Tag)
+	curMap := make(map[int64]*types.Tag)
+
+	// Populate previous tags map
+	for _, tag := range prev {
+		if tag != nil {
+			prevMap[tag.ID] = tag
+		}
+	}
+
+	// Populate current tags map
+	for _, tag := range cur {
+		if tag != nil {
+			curMap[tag.ID] = tag
+		}
+	}
+
+	var added []string
+	var removed []string
+	var previous []string
+	var current []string
+
+	// Find added tags (in current but not in previous)
+	for id, tag := range curMap {
+		current = append(current, tag.Name)
+		if _, exists := prevMap[id]; !exists {
+			added = append(added, tag.Name)
+		}
+	}
+
+	// Find removed tags (in previous but not in current)
+	for id, tag := range prevMap {
+		previous = append(previous, tag.Name)
+		if _, exists := curMap[id]; !exists {
+			removed = append(removed, tag.Name)
+		}
+	}
+
+	if len(added) == 0 && len(removed) == 0 {
+		return nil
+	}
+
+	sort.Strings(previous)
+	sort.Strings(current)
+	sort.Strings(added)
+	sort.Strings(removed)
+
+	return &types.RevisionDiffTaggedField{
+		Previous: previous,
+		Current:  current,
+		Added:    added,
+		Removed:  removed,
+	}
 }

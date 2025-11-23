@@ -355,6 +355,9 @@ const docTemplate = `{
                     "type": "string",
                     "example": "arcade"
                 },
+                "logo_path": {
+                    "type": "string"
+                },
                 "notes": {
                     "type": "string",
                     "example": ""
@@ -399,6 +402,9 @@ const docTemplate = `{
                 "ruffle_support": {
                     "type": "string",
                     "example": "Standalone"
+                },
+                "screenshot_path": {
+                    "type": "string"
                 },
                 "series": {
                     "type": "string",

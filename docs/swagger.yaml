@@ -71,6 +71,8 @@ definitions:
       library:
         example: arcade
         type: string
+      logo_path:
+        type: string
       notes:
         example: ""
         type: string
@@ -125,6 +127,8 @@ definitions:
         type: string
       ruffle_support:
         example: Standalone
+        type: string
+      screenshot_path:
         type: string
       series:
         example: ""

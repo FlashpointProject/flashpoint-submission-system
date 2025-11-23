@@ -871,6 +871,9 @@ async function selectReason(message, showRedirect, options, cb) {
 }
 
 function parseDiff(diff) {
+    if (!diff) {
+        return diff;
+    }
     for (const key of Object.keys(diff)) {
         if (diff[key] === null) {
             delete diff[key];
@@ -900,20 +903,59 @@ function createDiffTable(diff, outputId) {
         const cell3 = row.insertCell(2);
 
         cell1.textContent = key;
-        if (key === 'LogoPath' || key === 'ScreenshotPath') {
-            if (diff[key].previous) {
-                cell2.appendChild(getGameImageDiv(diff[key].previous));
-            } else {
-                cell2.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+
+        switch (key) {
+            case 'tags': {
+                // Previous
+                const prevEmpty = !diff[key].previous
+                cell2.innerHTML = (!prevEmpty) ? '<div class="tag-list">' + diff[key].previous.map(tag => {
+                    return `<div class="tag-box"><div>${tag}</div></div>`
+                }).join('') + '</div' : '<span style="color: #999; font-style: italic;">(empty)</span>';
+                // Current
+                const newElem = document.createElement('div');
+                newElem.innerHTML = diff[key].current.length > 0 ? '<div class="tag-list">' + diff[key].current.map(tag => {
+                    return `<div class="tag-box"><div>${tag}</div></div>`
+                }).join('') + '</div>' : '<span style="color: #999; font-style: italic;">(empty)</span>';
+                cell3.appendChild(newElem);
+                // Added
+                if (!prevEmpty && diff[key].added && diff[key].added.length > 0) {
+                    const addedElem = document.createElement('div');
+                    addedElem.className = 'diff-tagged-added';
+                    addedElem.innerHTML = '<b>+ ADDED:</b> ' + '<div class="tag-list">' + diff[key].added.map(tag => {
+                        return `<div class="tag-box"><div>${tag}</div></div>`
+                    }).join('') + '</div>';
+                    cell3.appendChild(addedElem);
+                }
+                // Removed
+                if (!prevEmpty && diff[key].removed && diff[key].removed.length > 0) {
+                    const removedElem = document.createElement('div');
+                    removedElem.className = 'diff-tagged-removed';
+                    removedElem.innerHTML = '<b>- REMOVED:</b> ' + '<div class="tag-list">' + diff[key].removed.map(tag => {
+                        return `<div class="tag-box"><div>${tag}</div></div>`
+                    }).join('') + '</div>';
+                    cell3.appendChild(removedElem);
+                }
+                break;
             }
-            if (diff[key].current) {
-                cell3.appendChild(getGameImageDiv(diff[key].current));
-            } else {
-                cell3.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+            case 'logo_path':
+            case 'screenshot_path' : {
+                if (diff[key].previous) {
+                    cell2.appendChild(getGameImageDiv(diff[key].previous));
+                } else {
+                    cell2.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+                }
+                if (diff[key].current) {
+                    cell3.appendChild(getGameImageDiv(diff[key].current));
+                } else {
+                    cell3.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+                }
+                break;
             }
-        } else {
-            cell2.innerHTML = diff[key].previous || '<span style="color: #999; font-style: italic;">(empty)</span>';
-            cell3.innerHTML = diff[key].current || '<span style="color: #999; font-style: italic;">(empty)</span>';
+            default: {
+                cell2.innerHTML = diff[key].previous || '<span style="color: #999; font-style: italic;">(empty)</span>';
+                cell3.innerHTML = diff[key].current || '<span style="color: #999; font-style: italic;">(empty)</span>';
+                break;
+            }
         }
     });
 

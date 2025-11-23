@@ -794,3 +794,8 @@ video {
     max-height: 12rem;
     max-width: 14rem;
 }
+
+.diff-tagged-removed,
+.diff-tagged-added {
+    margin-top: 0.8rem;
+}

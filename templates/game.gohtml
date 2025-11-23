@@ -425,18 +425,18 @@
         {{end}}
 
         <h3>Revisions</h3>
-        {{range .Revisions}}
+        {{range $index, $revision := .Revisions}}
             <div class="pure-g comment">
-                <div class="pure-u-1-6 bgr-{{.Action}}">
+                <div class="pure-u-1-6 bgr-{{ $revision.Action }}">
                     <div class="comment-header">
                         <div class="comment-header-user">
-                            <img src="{{default "/static/zuma.png" .AvatarURL}}" class="comment-avatar"
+                            <img src="{{ default "/static/zuma.png" $revision.AvatarURL }}" class="comment-avatar"
                                  alt="avatar"
-                                 title="{{if not .AvatarURL}}avatar missing, feels really weird man{{else}}a beautiful avatar{{end}}">
-                            <b>{{.Username}}</b>
+                                 title="{{ if not $revision.AvatarURL }}avatar missing, feels really weird man{{else}}a beautiful avatar{{end}}">
+                            <b>{{ $revision.Username }}</b>
                         </div>
                         <br>
-                        <span class="comment-date">{{.CreatedAt.Format "2006-01-02 15:04:05 -0700"}}</span>
+                        <span class="comment-date">{{ $revision.CreatedAt.Format "2006-01-02 15:04:05 -0700" }}</span>
                     </div>
                 </div>
                 <div class="pure-u-5-6">
@@ -450,16 +450,16 @@
                         {{ else if eq .Action "restore" }}
                             Restored:
                         {{end}}
-                        {{range $i, $line := (splitMultilineText .Reason) }}{{if gt $i 0}}
+                        {{range $i, $line := (splitMultilineText $revision.Reason) }}{{if gt $i 0}}
                             <br>{{end}}{{$line}}{{end}}
                     </div>
                     <div>
-                        <pre id="diff-output-{{ .CreatedAt }}"></pre>
+                        <pre id="diff-output-{{ $index }}"></pre>
                         <script>
                             (() => {
-                                const diff = parseDiff({{ .Diff }});
+                                const diff = parseDiff({{ $revision.Diff }});
                                 if (diff) {
-                                    let tableElem = createDiffTable(diff, "diff-output-{{ .CreatedAt }}");
+                                    let tableElem = createDiffTable(diff, "diff-output-{{ $index }}");
                                 }
                             })()
                         </script>
