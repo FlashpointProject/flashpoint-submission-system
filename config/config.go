@@ -54,6 +54,7 @@ type Config struct {
 	FlashpointSourceOnlyAdminMode bool
 	RecommendationEngineURL       string
 	DoNotUnfreezeGameList         []string
+	IndexServiceUrl               string
 }
 
 func EnvString(name string) string {
@@ -158,5 +159,6 @@ func GetConfig(l *logrus.Entry) *Config {
 		FlashpointSourceOnlyAdminMode: EnvBool("FLASHPOINT_SOURCE_ONLY_ADMIN_MODE"),
 		RecommendationEngineURL:       EnvString("RECOMMENDATION_ENGINE_URL"),
 		DoNotUnfreezeGameList:         EnvJSONList("DO_NOT_UNFREEZE_GAME_LIST"),
+		IndexServiceUrl:               EnvString("INDEX_SERVICE_URL"),
 	}
 }

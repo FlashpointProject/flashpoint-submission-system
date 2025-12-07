@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/bwmarrin/discordgo"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/clients"
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
@@ -331,6 +333,71 @@ func (a *App) HandleDiscordCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, dest, http.StatusFound)
+}
+
+func (a *App) HandleIndexRequest(w http.ResponseWriter, r *http.Request) {
+	if a.Conf.IndexServiceUrl != "" {
+		// Remove /index prefix
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/index")
+		if r.URL.Path == "" {
+			r.URL.Path = "/"
+		}
+
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/index/browse/", http.StatusFound)
+			return
+		}
+
+		// Set up index browser url
+		targetURL := a.Conf.IndexServiceUrl + r.URL.Path
+		if r.URL.RawQuery != "" {
+			targetURL += "?" + r.URL.RawQuery
+		}
+
+		// Create new request
+		proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+		if err != nil {
+			http.Error(w, "Error creating proxy request", http.StatusInternalServerError)
+			return
+		}
+
+		// Copy headers
+		for key, values := range r.Header {
+			for _, value := range values {
+				proxyReq.Header.Add(key, value)
+			}
+		}
+
+		// Make the request
+		client := &http.Client{
+			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse // Don't follow redirects
+			},
+		}
+
+		resp, err := client.Do(proxyReq)
+		if err != nil {
+			http.Error(w, "Error contacting service", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Copy response headers
+		for key, values := range resp.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+
+		// Copy status code
+		w.WriteHeader(resp.StatusCode)
+
+		// Copy response body
+		io.Copy(w, resp.Body)
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
 }
 
 func (a *App) HandleOauthAuthorize(w http.ResponseWriter, r *http.Request) {

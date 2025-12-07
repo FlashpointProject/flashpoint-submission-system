@@ -84,6 +84,11 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 	)
 	router.PathPrefix("/swagger/").Handler(swaggerHandler)
 
+	// Index site
+	router.PathPrefix("/index").Handler(
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleIndexRequest, types.AuthScopeIndexRead), muxAny(isStaff, isTrialCurator)), false))).
+		Methods("GET")
+
 	// auth
 	router.Handle(
 		"/auth",
