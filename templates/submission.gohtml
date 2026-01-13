@@ -507,7 +507,14 @@
                         </tr>
                         <tr>
                             <td class="meta-property">Additional Applications</td>
-                            <td class="break-all">--Not Implemented--</td>
+                            <td class="break-all">{{if not .CurationMeta.AdditionalApps}}<i>No Additional Applications</i>{{else}}
+                                    {{range $i, $app := .CurationMeta.AdditionalApps}}{{if gt $i 0}}
+                                        <hr>{{end}}
+                                    Heading: {{unpointify $app.Heading}}<br>
+                                    Application Path: {{unpointify $app.ApplicationPath}}<br>
+                                    Launch Command: {{unpointify $app.LaunchCommand}}
+                                    {{end}}
+                                {{end}}</td>
                         </tr>
                         </tbody>
                     </table>
