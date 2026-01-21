@@ -87,7 +87,10 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 // TODO subscribe/unsubscribe button
 // TODO tests for search
 
-// TestSubmissionStateMachine_MainFlow upload,bot approve,assign,approve,(unassign),assign,verify,(unassign),mark added
+// TestSubmissionStateMachine_MainFlow performs upload,bot approve,assign,approve,(unassign),assign,verify,(unassign),mark added.
+// Verifies that the users involved see only the buttons they should in the UI.
+// Verifies that the users involved cannot perform actions that they shouldn't be able to.
+// TODO does not verify that the users can perform all of the actions that they should be able to, implement later.
 func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()

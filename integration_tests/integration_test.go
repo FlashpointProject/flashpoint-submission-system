@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test submission upload through resumable upload service.
+// TestFileSubmission verifies submission upload through resumable upload service.
 func TestFileSubmission(t *testing.T) {
 	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
@@ -47,6 +47,7 @@ func TestFileSubmission(t *testing.T) {
 	}
 }
 
+// TestApproveVerifySubmission verifies basic happy path of submission flow.
 func TestApproveVerifySubmission(t *testing.T) {
 	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
