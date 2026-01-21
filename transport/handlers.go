@@ -72,7 +72,7 @@ func (a *App) HandleCommentReceiverBatch(w http.ResponseWriter, r *http.Request)
 	uid := utils.UserID(ctx)
 
 	params := mux.Vars(r)
-	submissionIDs := strings.Split(params["submission-ids"], ",")
+	submissionIDs := strings.Split(params[constants.ResourceKeySubmissionIDs], ",")
 	sids := make([]int64, 0, len(submissionIDs))
 
 	for _, submissionFileID := range submissionIDs {
