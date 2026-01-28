@@ -189,6 +189,38 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 	}
 }
 
+func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authbot.DiscordRoleReader, notificationBot notificationbot.DiscordNotificationSender,
+	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir, flashfreezeDir string, isDev bool,
+	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, flashfreezeIngestDir,
+	dataPacksDir string) *SiteService {
+
+	return &SiteService{
+		authBot:                   authBot,
+		notificationBot:           notificationBot,
+		dal:                       database.NewMysqlDAL(db),
+		pgdal:                     database.NewPostgresDAL(pgdb),
+		validator:                 NewValidator(validatorServerURL),
+		clock:                     &RealClock{},
+		randomStringProvider:      utils.NewRealRandomStringProvider(),
+		authTokenProvider:         NewAuthTokenProvider(),
+		sessionExpirationSeconds:  sessionExpirationSeconds,
+		submissionsDir:            submissionsDir,
+		submissionImagesDir:       submissionImagesDir,
+		flashfreezeDir:            flashfreezeDir,
+		notificationQueueNotEmpty: make(chan bool, 1),
+		isDev:                     isDev,
+		discordRoleCache:          memoize.NewMemoizer(2*time.Minute, 60*time.Minute),
+		metadataStatsCache:        memoize.NewMemoizer(1*time.Minute, cache2.NoExpiration),
+		resumableUploadService:    rsu,
+		archiveIndexerServerURL:   archiveIndexerServerURL,
+		flashfreezeIngestDir:      flashfreezeIngestDir,
+		SSK: SubmissionStatusKeeper{
+			m: make(map[string]*types.SubmissionStatus),
+		},
+		DataPacksIndexer: NewZipIndexer(pgdb, dataPacksDir, l.WithField("botName", "dataPackIndexer")),
+	}
+}
+
 // GetBasePageData loads base user data, does not return error if user is not logged in
 func (s *SiteService) GetBasePageData(ctx context.Context) (*types.BasePageData, error) {
 	dbs, err := s.dal.NewSession(ctx)

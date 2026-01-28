@@ -28,3 +28,7 @@ resumable-data/*
 
 .idea/*
 .vscode/*
+
+integration_tests/absolute.env
+integration_tests/test_data
+integration_tests/templates

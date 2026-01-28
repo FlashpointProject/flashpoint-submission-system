@@ -13,6 +13,15 @@ import (
 )
 
 func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Router) {
+	a.setupRoutes(router)
+
+	err := srv.ListenAndServe()
+	if err != nil {
+		l.Fatal(err)
+	}
+}
+
+func (a *App) setupRoutes(router *mux.Router) {
 	isStaff := func(r *http.Request, uid int64) (bool, error) {
 		return a.UserHasAnyRole(r, uid, constants.StaffRoles())
 	}
@@ -666,6 +675,7 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 
 	////////////////////////
 
+	// TODO delete flashfreeze func
 	// flashfreeze disabled for now
 
 	//router.Handle(
@@ -808,6 +818,7 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 			muxAll(muxNot(isSubmissionFrozen), isDeleter)), false))).
 		Methods("DELETE")
 
+	// TODO delete non-batch commenting
 	router.Handle(
 		fmt.Sprintf("/api/submission/{%s}/comment/{%s}", constants.ResourceKeySubmissionID, constants.ResourceKeyCommentID),
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
@@ -957,9 +968,4 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 	router.Handle("/api/stat",
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(a.RequestScope(a.HandleStat, types.AuthScopeAll), isGod), false))).
 		Methods("GET")
-
-	err := srv.ListenAndServe()
-	if err != nil {
-		l.Fatal(err)
-	}
 }

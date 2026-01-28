@@ -40,6 +40,21 @@ type App struct {
 	DFStorage           *DeviceFlowStorage
 	AuthCodeStorage     *AuthCodeStorage
 	AdminModePassword   string
+	Mux                 *mux.Router
+}
+
+func (a *App) InitializeMux() {
+	router := mux.NewRouter()
+
+	decoder := schema.NewDecoder()
+	decoder.ZeroEmpty(false)
+	decoder.IgnoreUnknownKeys(true)
+	a.decoder = decoder
+
+	a.authMiddlewareCache = memoize.NewMemoizer(5*time.Second, 60*time.Minute)
+
+	a.setupRoutes(router)
+	a.Mux = router
 }
 
 func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notificationBotSession *discordgo.Session, rsu *resumableuploadservice.ResumableUploadService) {
@@ -88,7 +103,7 @@ func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Poo
 		Conf: conf,
 		CC: utils.CookieCutter{
 			Previous: securecookie.New([]byte(conf.SecurecookieHashKeyPrevious), []byte(conf.SecurecookieBlockKeyPrevious)),
-			Current:  securecookie.New([]byte(conf.SecurecookieHashKeyCurrent), []byte(conf.SecurecookieBlockKeyPrevious)),
+			Current:  securecookie.New([]byte(conf.SecurecookieHashKeyCurrent), []byte(conf.SecurecookieBlockKeyCurrent)),
 		},
 		AuthCodeStorage: NewAuthCodeStorage(),
 		DFStorage:       NewDeviceFlowStorage(conf.HostBaseURL),
