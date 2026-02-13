@@ -14,8 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 type extendedTestUser struct {
@@ -90,7 +92,7 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 // TestSubmissionStateMachine_MainFlow performs upload,bot approve,assign,approve,(unassign),assign,verify,(unassign),mark added.
 // Verifies that the users involved see only the buttons they should in the UI.
 // Verifies that the users involved cannot perform actions that they shouldn't be able to.
-// TODO does not verify that the users can perform all of the actions that they should be able to, implement later.
+// Verifies that representative users can perform every allowed comment/upload action in each relevant flow state.
 func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
@@ -164,6 +166,180 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		disallowed []string
 	}
 
+	type flowState string
+
+	const (
+		stateUploaded             flowState = "uploaded"
+		stateAssignedTesting      flowState = "assigned-testing"
+		stateApprovedUnassigned   flowState = "approved-unassigned"
+		stateAssignedVerification flowState = "assigned-verification"
+		stateVerifiedUnassigned   flowState = "verified-unassigned"
+		stateMarkedAdded          flowState = "marked-added"
+	)
+
+	buttonToCommentAction := map[string]string{
+		btnAssignTesting:        constants.ActionAssignTesting,
+		btnUnassignTesting:      constants.ActionUnassignTesting,
+		btnApprove:              constants.ActionApprove,
+		btnAssignVerification:   constants.ActionAssignVerification,
+		btnUnassignVerification: constants.ActionUnassignVerification,
+		btnVerify:               constants.ActionVerify,
+		btnMarkAdded:            constants.ActionMarkAdded,
+		btnRequestChanges:       constants.ActionRequestChanges,
+		btnReject:               constants.ActionReject,
+	}
+
+	containsButton := func(buttons []string, target string) bool {
+		for _, button := range buttons {
+			if button == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	commentActionMessage := func(action string, userID, submissionID int64) string {
+		return fmt.Sprintf("integration test action %s by user %d on submission %d", action, userID, submissionID)
+	}
+
+	probeUploadCounter := 0
+	uploadUniqueSubmission := func(t *testing.T, cookie *http.Cookie, sid *int64) int64 {
+		t.Helper()
+
+		probeUploadCounter++
+		originalData, err := os.ReadFile("./test_files/Warpstar4K.7z")
+		require.NoError(t, err)
+
+		uniqueData := append([]byte{}, originalData...)
+		uniqueData = append(uniqueData, []byte(fmt.Sprintf("probe-%d", probeUploadCounter))...)
+
+		uniquePath := fmt.Sprintf("./test_data/probe-upload-%d.7z", probeUploadCounter)
+		err = os.WriteFile(uniquePath, uniqueData, 0o644)
+		require.NoError(t, err)
+		defer func() {
+			_ = os.Remove(uniquePath)
+		}()
+
+		return uploadTestSubmission(t, l, app, uniquePath, cookie, sid)
+	}
+
+	applyCommentAction := func(t *testing.T, user *extendedTestUser, sid int64, action string) {
+		t.Helper()
+		rr := addComment(t, l, app, user.Cookie, sid, action, commentActionMessage(action, user.ID, sid))
+		require.Equal(t, http.StatusOK, rr.Code, "action %s should be allowed for user %d on submission %d: %s", action, user.ID, sid, rr.Body.String())
+	}
+
+	waitForSubmissionState := func(t *testing.T, sid int64, waitFor string, predicate func(*types.ExtendedSubmission) bool) {
+		t.Helper()
+		timeout := time.After(3 * time.Second)
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-timeout:
+				require.FailNow(t, fmt.Sprintf("timeout waiting for submission %d to reach %s", sid, waitFor))
+			case <-ticker.C:
+				viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
+				require.NoError(t, err)
+				require.NotEmpty(t, viewData.Submissions)
+				if predicate(viewData.Submissions[0]) {
+					return
+				}
+			}
+		}
+	}
+
+	prepareSubmissionForState := func(t *testing.T, state flowState) int64 {
+		t.Helper()
+
+		probeSID := uploadUniqueSubmission(t, submitter.Cookie, nil)
+		if state == stateUploaded {
+			return probeSID
+		}
+
+		applyCommentAction(t, tester, probeSID, constants.ActionAssignTesting)
+		if state == stateAssignedTesting {
+			return probeSID
+		}
+
+		applyCommentAction(t, tester, probeSID, constants.ActionApprove)
+		waitForSubmissionState(t, probeSID, "approved by tester", func(submission *types.ExtendedSubmission) bool {
+			return len(submission.ApprovedUserIDs) > 0
+		})
+		if state == stateApprovedUnassigned {
+			return probeSID
+		}
+
+		applyCommentAction(t, verifier, probeSID, constants.ActionAssignVerification)
+		waitForSubmissionState(t, probeSID, "assigned for verification by verifier", func(submission *types.ExtendedSubmission) bool {
+			for _, uid := range submission.AssignedVerificationUserIDs {
+				if uid == verifier.ID {
+					return true
+				}
+			}
+			return false
+		})
+		if state == stateAssignedVerification {
+			return probeSID
+		}
+
+		applyCommentAction(t, verifier, probeSID, constants.ActionVerify)
+		waitForSubmissionState(t, probeSID, "verified by verifier", func(submission *types.ExtendedSubmission) bool {
+			for _, uid := range submission.VerifiedUserIDs {
+				if uid == verifier.ID {
+					return true
+				}
+			}
+			return false
+		})
+		if state == stateVerifiedUnassigned {
+			return probeSID
+		}
+
+		applyCommentAction(t, adder, probeSID, constants.ActionMarkAdded)
+		if state == stateMarkedAdded {
+			return probeSID
+		}
+
+		require.FailNow(t, "unknown state %q", state)
+		return 0
+	}
+
+	assertDisallowedActionsBlocked := func(t *testing.T, usersActions []userActions, sid int64) {
+		t.Helper()
+		for _, user := range usersActions {
+			for _, action := range user.disallowed {
+				rr := addComment(t, l, app, user.user.Cookie, sid, action, commentActionMessage(action, user.user.ID, sid))
+				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: %s", rr.Body.String())
+			}
+		}
+	}
+
+	assertAllowedActionsSucceed := func(t *testing.T, usersActions []userActions, state flowState, expectedButtons []string) {
+		t.Helper()
+		for _, button := range expectedButtons {
+			var actor *extendedTestUser
+			for _, userAction := range usersActions {
+				if containsButton(userAction.allowed, button) {
+					actor = userAction.user
+					break
+				}
+			}
+			require.NotNil(t, actor, "no user has expected allowed button %s in state %s", button, state)
+
+			probeSID := prepareSubmissionForState(t, state)
+			if button == btnUpload {
+				uploadUniqueSubmission(t, actor.Cookie, &probeSID)
+				continue
+			}
+
+			action, ok := buttonToCommentAction[button]
+			require.True(t, ok, "no mapped comment action for button %s", button)
+			applyCommentAction(t, actor, probeSID, action)
+		}
+	}
+
 	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 
 	// 1. Upload
@@ -209,12 +385,14 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 
 		// Check that disallowed actions are actually disallowed on backend
-		for _, user := range usersActions {
-			for _, action := range user.disallowed {
-				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
-			}
-		}
+		assertDisallowedActionsBlocked(t, usersActions, sid)
+
+		// Check that representative allowed actions succeed on isolated submissions at this exact state.
+		assertAllowedActionsSucceed(t, usersActions, stateUploaded, []string{
+			btnAssignTesting,
+			btnReject,
+			btnUpload,
+		})
 
 		viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
 		require.NoError(t, err)
@@ -281,12 +459,14 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 
 		// Check that disallowed actions are actually disallowed on backend
-		for _, user := range usersActions {
-			for _, action := range user.disallowed {
-				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
-			}
-		}
+		assertDisallowedActionsBlocked(t, usersActions, sid)
+
+		// Check that representative allowed actions succeed on isolated submissions at this exact state.
+		assertAllowedActionsSucceed(t, usersActions, stateAssignedTesting, []string{
+			btnUnassignTesting,
+			btnApprove,
+			btnRequestChanges,
+		})
 
 		viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
 		require.NoError(t, err)
@@ -353,12 +533,7 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 
 		// Check that disallowed actions are actually disallowed on backend
-		for _, user := range usersActions {
-			for _, action := range user.disallowed {
-				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
-			}
-		}
+		assertDisallowedActionsBlocked(t, usersActions, sid)
 
 		viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
 		require.NoError(t, err)
@@ -425,12 +600,7 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 
 		// Check that disallowed actions are actually disallowed on backend
-		for _, user := range usersActions {
-			for _, action := range user.disallowed {
-				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
-			}
-		}
+		assertDisallowedActionsBlocked(t, usersActions, sid)
 
 		viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
 		require.NoError(t, err)
@@ -497,12 +667,7 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 
 		// Check that disallowed actions are actually disallowed on backend
-		for _, user := range usersActions {
-			for _, action := range user.disallowed {
-				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
-			}
-		}
+		assertDisallowedActionsBlocked(t, usersActions, sid)
 
 		viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
 		require.NoError(t, err)
@@ -569,12 +734,7 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 
 		// Check that disallowed actions are actually disallowed on backend
-		for _, user := range usersActions {
-			for _, action := range user.disallowed {
-				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
-			}
-		}
+		assertDisallowedActionsBlocked(t, usersActions, sid)
 
 		viewData, err := app.Service.GetViewSubmissionPageData(ctx, submitter.ID, sid)
 		require.NoError(t, err)
