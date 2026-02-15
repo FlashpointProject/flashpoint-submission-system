@@ -94,7 +94,6 @@ func newResumableUpload(uid int64, fileID string, chunkCount int, rsu *resumable
 	}
 }
 
-
 ///////////
 
 func (s *SiteService) IsChunkReceived(ctx context.Context, resumableParams *types.ResumableParams) (bool, error) {

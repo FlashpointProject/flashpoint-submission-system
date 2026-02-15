@@ -2,15 +2,11 @@ package service
 
 import (
 	"context"
-	"crypto/md5"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"io/ioutil"
 	"log"
 	"math"
@@ -34,7 +30,6 @@ import (
 
 	"github.com/FlashpointProject/flashpoint-submission-system/clients"
 	"github.com/FlashpointProject/flashpoint-submission-system/resumableuploadservice"
-	"github.com/go-sql-driver/mysql"
 	"github.com/kofalt/go-memoize"
 	"golang.org/x/sync/errgroup"
 
@@ -185,7 +180,7 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 }
 
 func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authbot.DiscordRoleReader, notificationBot notificationbot.DiscordNotificationSender,
-	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir, isDev bool,
+	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
 	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
 	return &SiteService{
@@ -2471,10 +2466,7 @@ func (s *SiteService) GetStatisticsPageData(ctx context.Context) (*types.Statist
 	var scif int64
 	var uc int64
 	var cc int64
-	var ffc int64
-	var fffc int64
 	var tss int64
-	var tffs int64
 
 	errs.Go(func() error {
 		dbs, _ := s.dal.NewSession(ectx)

@@ -1730,7 +1730,6 @@ func (a *App) HandleRecomputeSubmissionCacheAll(w http.ResponseWriter, r *http.R
 
 var ingestUnknownGuard = make(chan struct{}, 1)
 
-
 func (a *App) HandleForceApproveSubmission(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
