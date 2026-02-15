@@ -669,17 +669,6 @@ type ResumableParams struct {
 	ResumableTotalChunks      int    `schema:"resumableTotalChunks"`
 }
 
-type FlashfreezeFile struct {
-	ID               int64
-	UserID           int64
-	OriginalFilename string
-	CurrentFilename  string
-	Size             int64
-	UploadedAt       time.Time
-	MD5Sum           string
-	SHA256Sum        string
-}
-
 type IndexerResp struct {
 	ArchiveFilename string              `json:"archive_filename"`
 	Files           []*IndexedFileEntry `json:"files"`
@@ -693,108 +682,6 @@ type IndexedFileEntry struct {
 	FileUtilOutput   string `json:"file_util_output"`
 	SHA256           string `json:"sha256"`
 	MD5              string `json:"md5"`
-}
-
-type ExtendedFlashfreezeItem struct {
-	FileID            int64
-	SubmitterID       int64
-	SubmitterUsername string
-	OriginalFilename  string
-	MD5Sum            string
-	SHA256Sum         string
-	Size              int64
-	UploadedAt        *time.Time // only for root files
-	Description       *string    // only for inner files
-	IsRootFile        bool
-	IsDeepFile        bool
-	IndexingTime      *time.Duration // only for root files
-	FileCount         *int64         // only for root files
-	IndexingErrors    *int64         // only for root files
-}
-
-type FlashfreezeFilter struct {
-	FileIDs     []int64 `schema:"file-id"`
-	SubmitterID *int64  `schema:"submitter-id"`
-
-	NameFulltext        *string `schema:"name-fulltext"`
-	DescriptionFulltext *string `schema:"description-fulltext"` // only for inner files
-
-	NamePrefix        *string `schema:"name-prefix"`
-	DescriptionPrefix *string `schema:"description-prefix"` // only for inner files
-
-	SizeMin *int64 `schema:"size-min"`
-	SizeMax *int64 `schema:"size-max"`
-
-	SubmitterUsernamePartial *string `schema:"submitter-username-partial"`
-	MD5SumPartial            *string `schema:"md5sum-partial"`
-	SHA256SumPartial         *string `schema:"sha256sum-partial"`
-
-	SearchFiles            *bool `schema:"search-files"`
-	SearchFilesRecursively *bool `schema:"search-files-recursively"`
-
-	ResultsPerPage *int64 `schema:"results-per-page"`
-	Page           *int64 `schema:"page"`
-}
-
-func (ff *FlashfreezeFilter) Validate() error {
-
-	v := reflect.ValueOf(ff).Elem() // fucking schema zeroing out my nil pointers
-	t := reflect.TypeOf(ff).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		if t.Field(i).Type.Kind() == reflect.Ptr {
-			f := v.Field(i)
-			e := f.Elem()
-			if e.Kind() == reflect.Int64 && e.Int() == 0 {
-				f.Set(reflect.Zero(f.Type()))
-			}
-			if e.Kind() == reflect.String && e.String() == "" {
-				f.Set(reflect.Zero(f.Type()))
-			}
-		}
-	}
-
-	if ff.SubmitterID != nil && *ff.SubmitterID < 1 {
-		if *ff.SubmitterID == 0 {
-			ff.SubmitterID = nil
-		} else {
-			return fmt.Errorf("submitter id must be >= 1")
-		}
-	}
-	if ff.SizeMin != nil && *ff.SizeMin < 1 {
-		if *ff.SizeMin == 0 {
-			ff.SizeMin = nil
-		} else {
-			return fmt.Errorf("size-uncompressed-min must be >= 1")
-		}
-	}
-	if ff.SizeMax != nil && *ff.SizeMax < 1 {
-		if *ff.SizeMax == 0 {
-			ff.SizeMax = nil
-		} else {
-			return fmt.Errorf("size-uncompressed-max must be >= 1")
-		}
-
-		if ff.SizeMin != nil && *ff.SizeMin > *ff.SizeMax {
-			return fmt.Errorf("size-uncompressed-min cannot be greater than size-uncompressed-max")
-		}
-	}
-
-	if ff.ResultsPerPage != nil && *ff.ResultsPerPage < 1 {
-		if *ff.ResultsPerPage == 0 {
-			ff.ResultsPerPage = nil
-		} else {
-			return fmt.Errorf("results per page must be >= 1")
-		}
-	}
-	if ff.Page != nil && *ff.Page < 1 {
-		if *ff.Page == 0 {
-			ff.Page = nil
-		} else {
-			return fmt.Errorf("page must be >= 1")
-		}
-	}
-
-	return nil
 }
 
 type DeleteUserSessionsRequest struct {

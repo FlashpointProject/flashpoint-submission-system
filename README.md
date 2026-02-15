@@ -19,7 +19,6 @@ Not tested on Mac, only on Linux.
   * PostgreSQL - db for metadata edits and updating the master list through the [launcher](https://github.com/FlashpointProject/launcher)
   * [Validator](https://github.com/FlashpointProject/Curation-Validation-Bot) - validates uploads and post about them on Discord
   
-Optionally, also run the [archive indexer](https://github.com/Dri0m/recursive-archive-indexer) if you want to upload stuff to what's called Flashfreeze.
 
 ## Setting up the environment
 

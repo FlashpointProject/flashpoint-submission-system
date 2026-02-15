@@ -71,7 +71,6 @@ const (
 	ResourceKeyFileIDs               = "file-ids"
 	ResourceKeyCommentID             = "comment-id"
 	ResourceKeyCurationImageID       = "curation-image-id"
-	ResourceKeyFlashfreezeRootFileID = "flashfreeze-root-file-id"
 	ResourceKeyUserID                = "user-id"
 	ResourceKeyTempName              = "temp-name"
 	ResourceKeyTagID                 = "tag-id"

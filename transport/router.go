@@ -179,13 +179,6 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestWeb(a.HandleHelpPage, false))).
 		Methods("GET")
 
-	router.Handle(
-		"/web/flashfreeze/submit",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(
-			a.RequestScope(a.HandleFlashfreezeSubmitPage, types.AuthScopeFlashfreezeUpload),
-			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
-		Methods("GET")
-
 	////////////////////////
 
 	f := a.UserAuthMux(a.RequestScope(a.HandleProfilePage, types.AuthScopeIdentity))
@@ -585,22 +578,6 @@ func (a *App) setupRoutes(router *mux.Router) {
 
 	////////////////////////
 
-	//f = a.UserAuthMux(
-	//	a.RequestScope(a.HandleSearchFlashfreezePage, types.AuthScopeFlashfreezeReadFiles),
-	//	muxAny(isStaff, isTrialCurator, isInAudit))
-	//
-	//router.Handle(
-	//	"/web/flashfreeze/files",
-	//	http.HandlerFunc(a.RequestWeb(f, false))).
-	//	Methods("GET")
-	//
-	//router.Handle(
-	//	"/api/flashfreeze/files",
-	//	http.HandlerFunc(a.RequestJSON(f, false))).
-	//	Methods("GET")
-
-	////////////////////////
-
 	f = a.UserAuthMux(a.HandleStatisticsPage)
 
 	router.Handle(
@@ -672,25 +649,6 @@ func (a *App) setupRoutes(router *mux.Router) {
 				muxAll(isTrialCurator, userOwnsSubmission),
 				muxAll(isInAudit, userOwnsSubmission))), false))).
 		Methods("GET")
-
-	////////////////////////
-
-	// TODO delete flashfreeze func
-	// flashfreeze disabled for now
-
-	//router.Handle(
-	//	"/api/flashfreeze-receiver-resumable",
-	//	http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
-	//		a.HandleFlashfreezeReceiverResumable,
-	//		muxAny(isStaff, isTrialCurator, isInAudit))))).
-	//	Methods("POST")
-	//
-	//router.Handle(
-	//	"/api/flashfreeze-receiver-resumable",
-	//	http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
-	//		a.HandleReceiverResumableTestChunk,
-	//		muxAny(isStaff, isTrialCurator, isInAudit))))).
-	//	Methods("GET")
 
 	////////////////////////
 
@@ -794,13 +752,6 @@ func (a *App) setupRoutes(router *mux.Router) {
 				muxAll(muxNot(isSubmissionFrozen), isInAudit),
 				muxAll(isSubmissionFrozen, isFreezer, muxAny(isStaff, isTrialCurator, isInAudit)),
 			)), false))).
-		Methods("GET")
-
-	router.Handle(
-		fmt.Sprintf("/data/flashfreeze/file/{%s}", constants.ResourceKeyFlashfreezeRootFileID),
-		http.HandlerFunc(a.RequestData(a.UserAuthMux(
-			a.RequestScope(a.HandleDownloadFlashfreezeRootFile, types.AuthScopeSubmissionReadFiles),
-			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
 		Methods("GET")
 
 	// soft delete
@@ -929,20 +880,8 @@ func (a *App) setupRoutes(router *mux.Router) {
 	//	http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleUpdateMasterDB, types.AuthScopeAll), isGod), false))).
 	//	Methods("GET")
 
-	router.Handle("/api/internal/flashfreeze/ingest",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleIngestFlashfreeze, types.AuthScopeAll), isGod), false))).
-		Methods("GET")
-
 	router.Handle("/api/internal/recompute-submission-cache-all",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleRecomputeSubmissionCacheAll, types.AuthScopeAll), isGod), false))).
-		Methods("GET")
-
-	router.Handle("/api/internal/flashfreeze/ingest-unknown-files",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleIngestUnknownFlashfreeze, types.AuthScopeAll), isGod), false))).
-		Methods("GET")
-
-	router.Handle("/api/internal/flashfreeze/index-unindexed-files",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleIndexUnindexedFlashfreeze, types.AuthScopeAll), isGod), false))).
 		Methods("GET")
 
 	router.Handle("/api/internal/delete-user-sessions",
