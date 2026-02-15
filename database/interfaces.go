@@ -144,22 +144,11 @@ type DAL interface {
 
 	GetAllSimilarityAttributes(dbs DBSession) ([]*types.SimilarityAttributes, error)
 
-	StoreFlashfreezeRootFile(dbs DBSession, s *types.FlashfreezeFile) (int64, error)
-	StoreFlashfreezeDeepFile(dbs DBSession, fid int64, entries []*types.IndexedFileEntry) error
-	SearchFlashfreezeFiles(dbs DBSession, filter *types.FlashfreezeFilter) ([]*types.ExtendedFlashfreezeItem, int64, error)
-	UpdateFlashfreezeRootFileIndexedState(dbs DBSession, fid int64, indexedAt *time.Time, indexingErrors uint64) error
-	GetFlashfreezeRootFile(dbs DBSession, fid int64) (*types.FlashfreezeFile, error)
-	GetAllFlashfreezeRootFiles(dbs DBSession) ([]*types.FlashfreezeFile, error)
-	GetAllUnindexedFlashfreezeRootFiles(dbs DBSession) ([]*types.FlashfreezeFile, error)
-
 	DeleteUserSessions(dbs DBSession, uid int64) (int64, error)
 
 	GetTotalCommentsCount(dbs DBSession) (int64, error)
 	GetTotalUserCount(dbs DBSession) (int64, error)
-	GetTotalFlashfreezeCount(dbs DBSession) (int64, error)
-	GetTotalFlashfreezeFileCount(dbs DBSession) (int64, error)
 	GetTotalSubmissionFilesize(dbs DBSession) (int64, error)
-	GetTotalFlashfreezeFilesize(dbs DBSession) (int64, error)
 
 	GetUsers(dbs DBSession) ([]*types.User, error)
 	GetCommentsByUserIDAndAction(dbs DBSession, uid int64, action string) ([]*types.Comment, error)

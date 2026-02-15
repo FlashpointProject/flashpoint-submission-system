@@ -2,15 +2,11 @@ package service
 
 import (
 	"context"
-	"crypto/md5"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"io/ioutil"
 	"log"
 	"math"
@@ -34,7 +30,6 @@ import (
 
 	"github.com/FlashpointProject/flashpoint-submission-system/clients"
 	"github.com/FlashpointProject/flashpoint-submission-system/resumableuploadservice"
-	"github.com/go-sql-driver/mysql"
 	"github.com/kofalt/go-memoize"
 	"golang.org/x/sync/errgroup"
 
@@ -143,7 +138,6 @@ type SiteService struct {
 	sessionExpirationSeconds  int64
 	submissionsDir            string
 	submissionImagesDir       string
-	flashfreezeDir            string
 	notificationQueueNotEmpty chan bool
 	isDev                     bool
 	submissionReceiverMutex   sync.Mutex
@@ -151,16 +145,14 @@ type SiteService struct {
 	metadataStatsCache        *memoize.Memoizer
 	resumableUploadService    *resumableuploadservice.ResumableUploadService
 	archiveIndexerServerURL   string
-	flashfreezeIngestDir      string
 	SSK                       SubmissionStatusKeeper
 	DataPacksIndexer          ZipIndexer
 }
 
 func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notificationBotSession *discordgo.Session,
 	flashpointServerID, notificationChannelID, curationFeedChannelID, validatorServerURL string,
-	sessionExpirationSeconds int64, submissionsDir, submissionImagesDir, flashfreezeDir string, isDev bool,
-	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, flashfreezeIngestDir,
-	dataPacksDir string) *SiteService {
+	sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
+	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
 	return &SiteService{
 		authBot:                   authbot.NewBot(authBotSession, flashpointServerID, l.WithField("botName", "authBot"), isDev),
@@ -174,14 +166,12 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 		sessionExpirationSeconds:  sessionExpirationSeconds,
 		submissionsDir:            submissionsDir,
 		submissionImagesDir:       submissionImagesDir,
-		flashfreezeDir:            flashfreezeDir,
 		notificationQueueNotEmpty: make(chan bool, 1),
 		isDev:                     isDev,
 		discordRoleCache:          memoize.NewMemoizer(2*time.Minute, 60*time.Minute),
 		metadataStatsCache:        memoize.NewMemoizer(1*time.Minute, cache2.NoExpiration),
 		resumableUploadService:    rsu,
 		archiveIndexerServerURL:   archiveIndexerServerURL,
-		flashfreezeIngestDir:      flashfreezeIngestDir,
 		SSK: SubmissionStatusKeeper{
 			m: make(map[string]*types.SubmissionStatus),
 		},
@@ -190,9 +180,8 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 }
 
 func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authbot.DiscordRoleReader, notificationBot notificationbot.DiscordNotificationSender,
-	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir, flashfreezeDir string, isDev bool,
-	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, flashfreezeIngestDir,
-	dataPacksDir string) *SiteService {
+	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
+	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
 	return &SiteService{
 		authBot:                   authBot,
@@ -206,14 +195,12 @@ func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authb
 		sessionExpirationSeconds:  sessionExpirationSeconds,
 		submissionsDir:            submissionsDir,
 		submissionImagesDir:       submissionImagesDir,
-		flashfreezeDir:            flashfreezeDir,
 		notificationQueueNotEmpty: make(chan bool, 1),
 		isDev:                     isDev,
 		discordRoleCache:          memoize.NewMemoizer(2*time.Minute, 60*time.Minute),
 		metadataStatsCache:        memoize.NewMemoizer(1*time.Minute, cache2.NoExpiration),
 		resumableUploadService:    rsu,
 		archiveIndexerServerURL:   archiveIndexerServerURL,
-		flashfreezeIngestDir:      flashfreezeIngestDir,
 		SSK: SubmissionStatusKeeper{
 			m: make(map[string]*types.SubmissionStatus),
 		},
@@ -2131,132 +2118,6 @@ func isFlasfhreezeExtensionValid(filename string) (bool, string) {
 	return true, ext
 }
 
-func (s *SiteService) processReceivedFlashfreezeItem(ctx context.Context, dbs database.DBSession, uid int64, fileReadCloserProvider resumableuploadservice.ReadCloserInformerProvider, filename string, filesize int64) (*string, *int64, error) {
-	utils.LogCtx(ctx).Debugf("received a file '%s' - %d bytes", filename, filesize)
-
-	if err := os.MkdirAll(s.flashfreezeDir, os.ModeDir); err != nil {
-		return nil, nil, err
-	}
-
-	ok, ext := isFlasfhreezeExtensionValid(filename)
-	if !ok {
-		return nil, nil, perr("unsupported file extension", http.StatusUnsupportedMediaType)
-	}
-
-	var destinationFilename string
-	var destinationFilePath string
-
-	for {
-		destinationFilename = s.randomStringProvider.RandomString(64) + ext
-		destinationFilePath = fmt.Sprintf("%s/%s", s.flashfreezeDir, destinationFilename)
-		if !utils.FileExists(destinationFilePath) {
-			break
-		}
-	}
-
-	var err error
-
-	readCloser, err := fileReadCloserProvider.GetReadCloserInformer()
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, nil, err
-	}
-	defer readCloser.Close()
-
-	destination, err := os.Create(destinationFilePath)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, nil, err
-	}
-	defer destination.Close()
-
-	utils.LogCtx(ctx).Debugf("copying flashfreeze file to '%s'...", destinationFilePath)
-
-	md5sum := md5.New()
-	sha256sum := sha256.New()
-	multiWriter := io.MultiWriter(destination, sha256sum, md5sum)
-
-	nBytes, err := io.Copy(multiWriter, readCloser)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, nil, err
-	}
-	if nBytes != filesize {
-		err := fmt.Errorf("incorrect number of bytes copied to destination")
-		utils.LogCtx(ctx).Error(err)
-		return nil, nil, err
-	}
-
-	sf := &types.FlashfreezeFile{
-		UserID:           uid,
-		OriginalFilename: filename,
-		CurrentFilename:  destinationFilename,
-		Size:             filesize,
-		UploadedAt:       s.clock.Now(),
-		MD5Sum:           hex.EncodeToString(md5sum.Sum(nil)),
-		SHA256Sum:        hex.EncodeToString(sha256sum.Sum(nil)),
-	}
-
-	fid, err := s.dal.StoreFlashfreezeRootFile(dbs, sf)
-	if err != nil {
-		me, ok := err.(*mysql.MySQLError)
-		if ok {
-			if me.Number == 1062 {
-				return &destinationFilePath, nil, perr(fmt.Sprintf("file '%s' with checksums md5:%s sha256:%s already present in the DB", filename, sf.MD5Sum, sf.SHA256Sum), http.StatusConflict)
-			}
-		}
-		utils.LogCtx(ctx).Error(err)
-		return &destinationFilePath, nil, dberr(err)
-	}
-
-	return &destinationFilePath, &fid, nil
-}
-
-func (s *SiteService) GetSearchFlashfreezeData(ctx context.Context, filter *types.FlashfreezeFilter) (*types.SearchFlashfreezePageData, error) {
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	defer dbs.Rollback()
-
-	bpd, err := s.GetBasePageData(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	flashfreezeFiles, count, err := s.dal.SearchFlashfreezeFiles(dbs, filter)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	pageData := &types.SearchFlashfreezePageData{
-		BasePageData:     *bpd,
-		FlashfreezeFiles: flashfreezeFiles,
-		TotalCount:       count,
-		Filter:           *filter,
-	}
-
-	return pageData, nil
-}
-
-func (s *SiteService) GetFlashfreezeRootFile(ctx context.Context, fid int64) (*types.FlashfreezeFile, error) {
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	defer dbs.Rollback()
-
-	ci, err := s.dal.GetFlashfreezeRootFile(dbs, fid)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	return ci, nil
-}
-
 func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, uid int64, sid *int64, resumableParams *types.ResumableParams, tempName string) error {
 	var destinationFilename *string
 	imageFilePaths := make([]string, 0)
@@ -2346,93 +2207,6 @@ func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, ui
 	return nil
 }
 
-func (s *SiteService) processReceivedResumableFlashfreeze(ctx context.Context, uid int64, resumableParams *types.ResumableParams) (*int64, error) {
-	var destinationFilename *string
-
-	cleanup := func() {
-		if destinationFilename != nil {
-			utils.LogCtx(ctx).Debugf("cleaning up file '%s'...", *destinationFilename)
-			if err := os.Remove(*destinationFilename); err != nil {
-				utils.LogCtx(ctx).Error(err)
-			}
-		}
-	}
-
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	defer dbs.Rollback()
-
-	ru := newResumableUpload(uid, resumableParams.ResumableIdentifier, resumableParams.ResumableTotalChunks, s.resumableUploadService)
-	destinationFilePath, fid, err := s.processReceivedFlashfreezeItem(ctx, dbs, uid, ru, resumableParams.ResumableFilename, resumableParams.ResumableTotalSize)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := dbs.Commit(); err != nil {
-		utils.LogCtx(ctx).Error(err)
-		cleanup()
-		return nil, dberr(err)
-	}
-
-	utils.LogCtx(ctx).WithField("amount", 1).Debug("flashfreeze items received")
-
-	l := utils.LogCtx(ctx).WithFields(logrus.Fields{"flashfreezeFileID": *fid, "destinationFilePath": *destinationFilePath})
-	go s.indexReceivedFlashfreezeFile(l, *fid, *destinationFilePath)
-
-	return fid, nil
-}
-
-func (s *SiteService) indexReceivedFlashfreezeFile(l *logrus.Entry, fid int64, filePath string) {
-	ctx := context.WithValue(context.Background(), utils.CtxKeys.Log, l)
-	utils.LogCtx(ctx).Debug("indexing flashfreeze file")
-
-	files, indexingErrors, err := provideArchiveForIndexing(filePath, s.archiveIndexerServerURL)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-	defer dbs.Rollback()
-
-	batch := make([]*types.IndexedFileEntry, 0, 1000)
-
-	for i, g := range files {
-		batch = append(batch, g)
-
-		if i%1000 == 0 || i == len(files)-1 {
-			utils.LogCtx(ctx).Debug("inserting flashfreeze file contents batch into fpfssdb")
-			err = s.dal.StoreFlashfreezeDeepFile(dbs, fid, batch)
-			if err != nil {
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-			batch = make([]*types.IndexedFileEntry, 0, 1000)
-		}
-	}
-
-	t := s.clock.Now()
-	err = s.dal.UpdateFlashfreezeRootFileIndexedState(dbs, fid, &t, indexingErrors)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-
-	if err := dbs.Commit(); err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-
-	utils.LogCtx(ctx).Debug("flashfreeze file indexed")
-}
-
 func provideArchiveForIndexing(filePath string, baseUrl string) ([]*types.IndexedFileEntry, uint64, error) {
 	client := http.Client{}
 	resp, err := client.Post(fmt.Sprintf("%s/provide-path?path=%s", baseUrl, url.QueryEscape(filePath)), "application/json;charset=utf-8", nil)
@@ -2458,175 +2232,6 @@ func provideArchiveForIndexing(filePath string, baseUrl string) ([]*types.Indexe
 	}
 
 	return ir.Files, ir.IndexingErrors, nil
-}
-
-func (s *SiteService) ingestGivenFlashfreezeItems(l *logrus.Entry, files []fs.FileInfo, rootDir string) {
-	guard := make(chan struct{}, 3)
-
-	mutex := sync.Mutex{}
-
-	for _, fileInfo := range files {
-		guard <- struct{}{}
-		fileInfo := fileInfo
-		go func() {
-			defer func() { <-guard }()
-			if fileInfo.IsDir() {
-				return
-			}
-			ctx := context.WithValue(context.Background(), utils.CtxKeys.Log, l.WithField("filename", fileInfo.Name()))
-			fullFilepath := rootDir + "/" + fileInfo.Name()
-
-			ok, ext := isFlasfhreezeExtensionValid(fileInfo.Name())
-			if !ok {
-				utils.LogCtx(ctx).Warn("unsupported file extension")
-				return
-			}
-
-			var destinationFilename string
-			var destinationFilePath string
-
-			for {
-				destinationFilename = s.randomStringProvider.RandomString(64) + ext
-				destinationFilePath = fmt.Sprintf("%s/%s", s.flashfreezeDir, destinationFilename)
-				if !utils.FileExists(destinationFilePath) {
-					break
-				}
-			}
-
-			md5sum := md5.New()
-			sha256sum := sha256.New()
-			multiWriter := io.MultiWriter(sha256sum, md5sum)
-
-			f, err := os.Open(fullFilepath)
-			if err != nil {
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-
-			utils.LogCtx(ctx).Debug("computing checksums...")
-			nBytes, err := io.Copy(multiWriter, f)
-			if err != nil {
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-			if nBytes != fileInfo.Size() {
-				err := fmt.Errorf("incorrect number of bytes copied to destination")
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-
-			mutex.Lock()
-			defer mutex.Unlock()
-			dbs, err := s.dal.NewSession(ctx)
-			if err != nil {
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-			defer dbs.Rollback()
-
-			sf := &types.FlashfreezeFile{
-				UserID:           constants.SystemID,
-				OriginalFilename: fileInfo.Name(),
-				CurrentFilename:  destinationFilename,
-				Size:             fileInfo.Size(),
-				UploadedAt:       s.clock.Now(),
-				MD5Sum:           hex.EncodeToString(md5sum.Sum(nil)),
-				SHA256Sum:        hex.EncodeToString(sha256sum.Sum(nil)),
-			}
-
-			fid, err := s.dal.StoreFlashfreezeRootFile(dbs, sf)
-			if err != nil {
-				me, ok := err.(*mysql.MySQLError)
-				if ok {
-					if me.Number == 1062 {
-						err := fmt.Errorf("file '%s' with checksums md5:%s sha256:%s already present in the DB", fileInfo.Name(), sf.MD5Sum, sf.SHA256Sum)
-						utils.LogCtx(ctx).Error(err)
-						return
-					}
-				}
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-
-			if err := os.Rename(fullFilepath, destinationFilePath); err != nil {
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-
-			if err := dbs.Commit(); err != nil {
-				utils.LogCtx(ctx).Error(err)
-				return
-			}
-
-			utils.LogCtx(ctx).WithField("amount", 1).Debug("flashfreeze items received")
-			l := utils.LogCtx(ctx).WithFields(logrus.Fields{"flashfreezeFileID": fid, "destinationFilepath": destinationFilePath})
-			s.indexReceivedFlashfreezeFile(l, fid, destinationFilePath)
-		}()
-	}
-}
-
-func (s *SiteService) IngestFlashfreezeItems(l *logrus.Entry) {
-	l.WithField("directory", s.flashfreezeIngestDir).Debug("listing directory")
-
-	files, err := ioutil.ReadDir(s.flashfreezeIngestDir)
-	if err != nil {
-		l.Error(err)
-		return
-	}
-
-	s.ingestGivenFlashfreezeItems(l, files, s.flashfreezeIngestDir)
-}
-
-func (s *SiteService) IngestUnknownFlashfreezeItems(l *logrus.Entry) {
-	ctx := context.WithValue(context.Background(), utils.CtxKeys.Log, l)
-
-	utils.LogCtx(ctx).WithField("directory", s.flashfreezeDir).Debug("listing directory")
-
-	allFiles, err := ioutil.ReadDir(s.flashfreezeDir)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-	defer dbs.Rollback()
-
-	ingestedFiles, err := s.dal.GetAllFlashfreezeRootFiles(dbs)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-
-	files := make([]fs.FileInfo, 0, len(allFiles)-len(ingestedFiles))
-
-	for _, candidateFile := range allFiles {
-		if candidateFile.IsDir() {
-			continue
-		}
-		found := false
-		for _, ingestedFile := range ingestedFiles {
-			if candidateFile.Name() == ingestedFile.CurrentFilename {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			files = append(files, candidateFile)
-		}
-	}
-
-	if len(files) == 0 {
-		utils.LogCtx(ctx).Debug("found no unknown flashfreeze items")
-		return
-	}
-
-	utils.LogCtx(ctx).WithField("unknownFlashfreezeItems", len(files)).Debug("found some unknown flashfreeze items")
-	s.ingestGivenFlashfreezeItems(l, files, s.flashfreezeDir)
 }
 
 func (s *SiteService) RecomputeSubmissionCacheAll(ctx context.Context) {
@@ -2670,34 +2275,6 @@ func (s *SiteService) RecomputeSubmissionCacheAll(ctx context.Context) {
 		}
 
 		recomputedCount += count
-	}
-}
-
-func (s *SiteService) IndexUnindexedFlashfreezeItems(l *logrus.Entry) {
-	ctx := context.WithValue(context.Background(), utils.CtxKeys.Log, l)
-
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-	defer dbs.Rollback()
-
-	unindexedFiles, err := s.dal.GetAllUnindexedFlashfreezeRootFiles(dbs)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return
-	}
-
-	if len(unindexedFiles) == 0 {
-		utils.LogCtx(ctx).Debug("found no unindexed flashfreeze files")
-	}
-
-	utils.LogCtx(ctx).WithField("unindexedFlashfreezeItems", len(unindexedFiles)).Debug("found some unindexed flashfreeze files")
-
-	for _, unindexedFile := range unindexedFiles {
-		destinationFilePath := s.flashfreezeDir + "/" + unindexedFile.CurrentFilename
-		s.indexReceivedFlashfreezeFile(l, unindexedFile.ID, destinationFilePath)
 	}
 }
 
@@ -2889,10 +2466,7 @@ func (s *SiteService) GetStatisticsPageData(ctx context.Context) (*types.Statist
 	var scif int64
 	var uc int64
 	var cc int64
-	var ffc int64
-	var fffc int64
 	var tss int64
-	var tffs int64
 
 	errs.Go(func() error {
 		dbs, _ := s.dal.NewSession(ectx)
@@ -2968,22 +2542,6 @@ func (s *SiteService) GetStatisticsPageData(ctx context.Context) (*types.Statist
 		return err
 	})
 
-	//errs.Go(func() error {
-	//	dbs, _ := s.dal.NewSession(ectx)
-	//	defer dbs.Rollback()
-	//	var err error
-	//	ffc, err = s.dal.GetTotalFlashfreezeCount(dbs)
-	//	return err
-	//})
-	//
-	//errs.Go(func() error {
-	//	dbs, _ := s.dal.NewSession(ectx)
-	//	defer dbs.Rollback()
-	//	var err error
-	//	fffc, err = s.dal.GetTotalFlashfreezeFileCount(dbs)
-	//	return err
-	//})
-
 	errs.Go(func() error {
 		dbs, _ := s.dal.NewSession(ectx)
 		defer dbs.Rollback()
@@ -2991,14 +2549,6 @@ func (s *SiteService) GetStatisticsPageData(ctx context.Context) (*types.Statist
 		tss, err = s.dal.GetTotalSubmissionFilesize(dbs)
 		return err
 	})
-
-	//errs.Go(func() error {
-	//	dbs, _ := s.dal.NewSession(ectx)
-	//	defer dbs.Rollback()
-	//	var err error
-	//	tffs, err = s.dal.GetTotalFlashfreezeFilesize(dbs)
-	//	return err
-	//})
 
 	if err := errs.Wait(); err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -3016,10 +2566,7 @@ func (s *SiteService) GetStatisticsPageData(ctx context.Context) (*types.Statist
 		SubmissionCountInFlashpoint: scif,
 		UserCount:                   uc,
 		CommentCount:                cc,
-		FlashfreezeCount:            ffc,
-		FlashfreezeFileCount:        fffc,
 		TotalSubmissionSize:         tss,
-		TotalFlashfreezeSize:        tffs,
 	}
 	return pageData, nil
 }
@@ -3071,7 +2618,6 @@ func (s *SiteService) GetUserStatistics(ctx context.Context, uid int64) (*types.
 
 	var lastUploadedSubmission *time.Time
 	var lastUpdatedSubmission *time.Time
-	//var lastUploadedFlashfreezeSubmission *time.Time
 	var latestUserActivity time.Time
 
 	errs.Go(func() error {
@@ -3121,39 +2667,11 @@ func (s *SiteService) GetUserStatistics(ctx context.Context, uid int64) (*types.
 		return nil
 	})
 
-	// TODO: flashfreeze is slow as fuck
-	// errs.Go(func() error {
-	// 	dbs, _ := s.dal.NewSession(ectx)
-	// 	defer dbs.Rollback()
-	// 	var err error
-
-	// 	filter := &types.FlashfreezeFilter{
-	// 		SubmitterID:    &user.ID,
-	// 		ResultsPerPage: utils.Int64Ptr(1),
-	// 		// flashfreeze search is sorted by descending upload date
-	// 	}
-
-	// 	files, _, err := s.dal.SearchFlashfreezeFiles(dbs, filter)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	if len(files) > 0 {
-	// 		lastUploadedFlashfreezeSubmission = files[0].UploadedAt
-	// 	}
-
-	// 	return nil
-	// })
-
 	if err := errs.Wait(); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, err
 	}
 
-	// latestUserActivity = utils.NilTime(lastUploadedFlashfreezeSubmission)
-	// if utils.NilTime(lastUpdatedSubmission).After(latestUserActivity) {
-	// 	latestUserActivity = utils.NilTime(lastUpdatedSubmission)
-	// }
 	latestUserActivity = utils.NilTime(lastUpdatedSubmission)
 	if utils.NilTime(lastUploadedSubmission).After(latestUserActivity) {
 		latestUserActivity = utils.NilTime(lastUploadedSubmission)

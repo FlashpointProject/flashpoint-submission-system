@@ -439,18 +439,6 @@ func (a *App) HandleSubmitPage(w http.ResponseWriter, r *http.Request) {
 	a.RenderTemplates(ctx, w, r, pageData, "templates/submit.gohtml")
 }
 
-func (a *App) HandleFlashfreezeSubmitPage(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	pageData, err := a.Service.GetBasePageData(ctx)
-	if err != nil {
-		writeError(ctx, w, err)
-		return
-	}
-
-	a.RenderTemplates(ctx, w, r, pageData, "templates/flashfreeze-submit.gohtml")
-}
-
 func (a *App) HandleMinLauncherVersion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -1719,91 +1707,6 @@ func (a *App) parseResumableRequest(ctx context.Context, r *http.Request) ([]byt
 	return chunk, resumableParams, nil
 }
 
-func (a *App) HandleFlashfreezeReceiverResumable(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	chunk, resumableParams, err := a.parseResumableRequest(ctx, r)
-	if err != nil {
-		writeError(ctx, w, err)
-		return
-	}
-
-	// then a magic happens
-	fid, err := a.Service.ReceiveFlashfreezeChunk(ctx, resumableParams, chunk)
-	if err != nil {
-		writeError(ctx, w, err)
-		return
-	}
-
-	var url *string
-	if fid != nil {
-		x := fmt.Sprintf("/flashfreeze/files?file-id=%d", *fid)
-		url = &x
-	}
-
-	resp := types.ReceiveFileResp{
-		Message: "success",
-		URL:     url,
-	}
-	writeResponse(ctx, w, resp, http.StatusOK)
-}
-
-func (a *App) HandleSearchFlashfreezePage(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	filter := &types.FlashfreezeFilter{}
-
-	if err := a.decoder.Decode(filter, r.URL.Query()); err != nil {
-		utils.LogCtx(ctx).Error(err)
-		writeError(ctx, w, perr("failed to decode query params", http.StatusInternalServerError))
-		return
-	}
-
-	if err := filter.Validate(); err != nil {
-		utils.LogCtx(ctx).Error(err)
-		writeError(ctx, w, perr(err.Error(), http.StatusBadRequest))
-		return
-	}
-
-	pageData, err := a.Service.GetSearchFlashfreezeData(ctx, filter)
-	if err != nil {
-		writeError(ctx, w, err)
-		return
-	}
-
-	if utils.RequestType(ctx) != constants.RequestWeb {
-		writeResponse(ctx, w, pageData, http.StatusOK)
-		return
-	}
-
-	a.RenderTemplates(ctx, w, r, pageData,
-		"templates/flashfreeze-files.gohtml",
-		"templates/flashfreeze-table.gohtml",
-		"templates/flashfreeze-filter.gohtml",
-		"templates/flashfreeze-pagenav.gohtml")
-}
-
-var ingestGuard = make(chan struct{}, 1)
-
-func (a *App) HandleIngestFlashfreeze(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	select {
-	case ingestGuard <- struct{}{}:
-		utils.LogCtx(ctx).Debug("starting flashfreeze ingestion")
-	default:
-		writeResponse(ctx, w, presp("ingestion already running", http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	go func() {
-		a.Service.IngestFlashfreezeItems(utils.LogCtx(context.WithValue(context.Background(), utils.CtxKeys.Log, utils.LogCtx(ctx))))
-		<-ingestGuard
-	}()
-
-	writeResponse(ctx, w, presp("starting flashfreeze ingestion", http.StatusOK), http.StatusOK)
-}
-
 var recomputeSubmissionCacheAllGuard = make(chan struct{}, 1)
 
 func (a *App) HandleRecomputeSubmissionCacheAll(w http.ResponseWriter, r *http.Request) {
@@ -1826,48 +1729,6 @@ func (a *App) HandleRecomputeSubmissionCacheAll(w http.ResponseWriter, r *http.R
 }
 
 var ingestUnknownGuard = make(chan struct{}, 1)
-
-// HandleIngestUnknownFlashfreeze ingests flashfreeze files which are in the flashfreeze directory, but not in the database.
-// This should not be needed and such files are a result of a bug or human error.
-func (a *App) HandleIngestUnknownFlashfreeze(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	select {
-	case ingestUnknownGuard <- struct{}{}:
-		utils.LogCtx(ctx).Debug("starting flashfreeze ingestion of unknown files")
-	default:
-		writeResponse(ctx, w, presp("ingestion already running", http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	go func() {
-		a.Service.IngestUnknownFlashfreezeItems(utils.LogCtx(context.WithValue(context.Background(), utils.CtxKeys.Log, utils.LogCtx(ctx))))
-		<-ingestUnknownGuard
-	}()
-
-	writeResponse(ctx, w, presp("starting flashfreeze ingestion of unknown files", http.StatusOK), http.StatusOK)
-}
-
-var indexUnindexedGuard = make(chan struct{}, 1)
-
-func (a *App) HandleIndexUnindexedFlashfreeze(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	select {
-	case indexUnindexedGuard <- struct{}{}:
-		utils.LogCtx(ctx).Debug("starting flashfreeze indexing of unindexed files")
-	default:
-		writeResponse(ctx, w, presp("indexing already running", http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	go func() {
-		a.Service.IndexUnindexedFlashfreezeItems(utils.LogCtx(context.WithValue(context.Background(), utils.CtxKeys.Log, utils.LogCtx(ctx))))
-		<-indexUnindexedGuard
-	}()
-
-	writeResponse(ctx, w, presp("starting flashfreeze indexing of unindexed files", http.StatusOK), http.StatusOK)
-}
 
 func (a *App) HandleForceApproveSubmission(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

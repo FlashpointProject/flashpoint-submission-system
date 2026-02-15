@@ -94,60 +94,6 @@ func newResumableUpload(uid int64, fileID string, chunkCount int, rsu *resumable
 	}
 }
 
-func (s *SiteService) ReceiveFlashfreezeChunk(ctx context.Context, resumableParams *types.ResumableParams, chunk []byte) (*int64, error) {
-	ctx = context.WithValue(ctx, utils.CtxKeys.Log, resumableLog(ctx, resumableParams))
-
-	uid := utils.UserID(ctx)
-	if uid == 0 {
-		utils.LogCtx(ctx).Panic("no user associated with request")
-	}
-
-	utils.LogCtx(ctx).Debug("storing flashfreeze chunk")
-	err := s.resumableUploadService.PutChunk(uid, resumableParams.ResumableIdentifier, resumableParams.ResumableChunkNumber, chunk)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, err
-	}
-
-	isComplete, err := s.resumableUploadService.IsUploadFinished(uid, resumableParams.ResumableIdentifier, resumableParams.ResumableTotalChunks, resumableParams.ResumableTotalSize)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, err
-	}
-
-	if isComplete {
-		utils.LogCtx(ctx).Debug("flashfreeze resumable upload finished")
-
-		processReceivedResumableFlashfreeze := func() (interface{}, error) {
-			return s.processReceivedResumableFlashfreeze(ctx, uid, resumableParams)
-		}
-		processReceivedResumableFlashfreezeKey := fmt.Sprintf("%d-%s", uid, resumableParams.ResumableIdentifier)
-
-		ifid, err, cached := resumableMemoizer.Memoize(processReceivedResumableFlashfreezeKey, processReceivedResumableFlashfreeze)
-		utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("processed resumable flashfreeze upload")
-
-		if err != nil {
-			resumableMemoizer.Storage.Delete(processReceivedResumableFlashfreezeKey)
-			utils.LogCtx(ctx).Error(err)
-			return nil, err
-		}
-
-		if !cached {
-			utils.LogCtx(ctx).Debug("deleting the resumable file chunks")
-			if err := s.resumableUploadService.DeleteFile(uid, resumableParams.ResumableIdentifier, resumableParams.ResumableTotalChunks); err != nil {
-				utils.LogCtx(ctx).Error(err)
-			}
-
-			utils.LogCtx(ctx).WithField("memoizerKey", processReceivedResumableFlashfreezeKey).Debug("deleting the memoized call")
-			resumableMemoizer.Storage.Delete(processReceivedResumableFlashfreezeKey)
-		}
-
-		return ifid.(*int64), nil
-	}
-
-	return nil, nil
-}
-
 ///////////
 
 func (s *SiteService) IsChunkReceived(ctx context.Context, resumableParams *types.ResumableParams) (bool, error) {
