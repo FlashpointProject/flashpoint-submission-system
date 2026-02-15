@@ -852,22 +852,6 @@ func (a *App) setupRoutes(router *mux.Router) {
 			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
 		Methods("GET")
 
-	// recommendation engine
-
-	router.Handle(
-		fmt.Sprintf("/api/recommendation/{%s}", constants.ResourceKeyRecommendationOp),
-		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
-			a.RequestScope(a.HandleRecommendationEngine, types.AuthScopeAll), // TODO might want to add auth scope for recommendation engine
-			muxAll(isStaff)), false))).
-		Methods("POST")
-
-	router.Handle(
-		"/web/recommendation-playground",
-		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
-			a.RequestScope(a.HandleRecommendationPlaygroundPage, types.AuthScopeAll),
-			muxAny(isStaff)), false))).
-		Methods("GET")
-
 	////////////////////////
 
 	// god tools
