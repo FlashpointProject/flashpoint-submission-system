@@ -334,7 +334,6 @@ func setupTestEnvironment(t *testing.T) {
 	// Create directories
 	dirs := []string{
 		"./test_data/resumable",
-		"./test_data/flashfreeze",
 		"./test_data/ingest",
 		"./test_data/submissions",
 		"./test_data/images",
@@ -669,7 +668,7 @@ func initTestApp(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.
 	require.NoError(t, err)
 	defer rsu.Close()
 
-	ss := service.NewWithMocks(l, maria, postgres, authBotMock, notifBotMock, conf.ValidatorServerURL, conf.SessionExpirationSeconds, conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.FlashfreezeDirFullPath, conf.IsDev, rsu, conf.ArchiveIndexerServerURL, conf.FlashfreezeIngestDirFullPath, conf.DataPacksDir)
+	ss := service.NewWithMocks(l, maria, postgres, authBotMock, notifBotMock, conf.ValidatorServerURL, conf.SessionExpirationSeconds, conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.IsDev, rsu, conf.ArchiveIndexerServerURL, conf.DataPacksDir)
 
 	app := &transport.App{
 		Conf:    conf,

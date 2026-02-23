@@ -129,13 +129,6 @@ type SubmissionsFilesPageData struct {
 	SubmissionFiles []*ExtendedSubmissionFile
 }
 
-type SearchFlashfreezePageData struct {
-	BasePageData
-	FlashfreezeFiles []*ExtendedFlashfreezeItem
-	TotalCount       int64
-	Filter           FlashfreezeFilter
-}
-
 type StatisticsPageData struct {
 	BasePageData
 	SubmissionCount             int64
@@ -147,10 +140,7 @@ type StatisticsPageData struct {
 	SubmissionCountInFlashpoint int64
 	UserCount                   int64
 	CommentCount                int64
-	FlashfreezeCount            int64
-	FlashfreezeFileCount        int64
 	TotalSubmissionSize         int64
-	TotalFlashfreezeSize        int64
 }
 
 type UserStatisticsPageData struct {

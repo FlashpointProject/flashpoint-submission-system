@@ -80,18 +80,6 @@ var authScopes = []types.AuthScope{
 		Description: "Upload new submission files",
 	},
 	{
-		Name:        types.AuthScopeFlashfreezeRead,
-		Description: "Read basic flashfreeze information (archive metadata)",
-	},
-	{
-		Name:        types.AuthScopeFlashfreezeReadFiles,
-		Description: "Read and download flashfreeze files / archive directories",
-	},
-	{
-		Name:        types.AuthScopeFlashfreezeUpload,
-		Description: "Upload new flashfreeze files",
-	},
-	{
 		Name:        types.AuthScopeGameDataRead,
 		Description: "Read Game Data info / file indexes",
 	},

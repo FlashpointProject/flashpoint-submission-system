@@ -38,9 +38,7 @@ type Config struct {
 	CurationFeedChannelID         string
 	IsDev                         bool
 	ResumableUploadDirFullPath    string
-	FlashfreezeDirFullPath        string
 	ArchiveIndexerServerURL       string
-	FlashfreezeIngestDirFullPath  string
 	SubmissionsDirFullPath        string
 	SubmissionImagesDirFullPath   string
 	SystemUid                     int64
@@ -143,9 +141,7 @@ func GetConfig(l *logrus.Entry) *Config {
 		CurationFeedChannelID:         EnvString("CURATION_FEED_CHANNEL_ID"),
 		IsDev:                         EnvBool("IS_DEV"),
 		ResumableUploadDirFullPath:    EnvString("RESUMABLE_UPLOAD_DIR_FULL_PATH"),
-		FlashfreezeDirFullPath:        EnvString("FLASHFREEZE_DIR_FULL_PATH"),
 		ArchiveIndexerServerURL:       EnvString("ARCHIVE_INDEXER_SERVER_URL"),
-		FlashfreezeIngestDirFullPath:  EnvString("FLASHFREEZE_INGEST_DIR_FULL_PATH"),
 		SubmissionsDirFullPath:        EnvString("SUBMISSIONS_DIR_FULL_PATH"),
 		SubmissionImagesDirFullPath:   EnvString("SUBMISSION_IMAGES_DIR_FULL_PATH"),
 		SystemUid:                     EnvInt("SYSTEM_UID"),
