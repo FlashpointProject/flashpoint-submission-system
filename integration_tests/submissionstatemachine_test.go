@@ -16,7 +16,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 type extendedTestUser struct {
@@ -179,11 +178,6 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	}
 
 	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
-
-	// Wait for bot processing to complete and for MySQL timestamps to advance past the file creation time.
-	// The cache query uses strict > comparison on DATETIME (second precision), so comments created in the
-	// same second as the file won't be counted as post-upload actions.
-	time.Sleep(2 * time.Second)
 
 	// 1. Upload
 	t.Run("Check after uploaded", func(t *testing.T) {
