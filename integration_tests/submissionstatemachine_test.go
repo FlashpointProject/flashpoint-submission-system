@@ -84,7 +84,6 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 // TODO add test with real validator and metadata edit
 // TODO add test with access to submission version downloads
 // TODO submission delete permissions
-// TODO subscribe/unsubscribe button
 // TODO tests for search
 
 // advanceToState creates a fresh submission and advances it to the given state.
