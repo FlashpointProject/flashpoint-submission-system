@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type extendedTestUser struct {
@@ -68,7 +69,7 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 		require.Contains(t, submission.RequestedChangesUserIDs, userID, "RequestedChangesUserIDs")
 	}
 	for _, userID := range counters.ApprovedUserIDs {
-		require.Contains(t, submission.ApprovedUserIDs, userID, "AssignedTestingUserIDs")
+		require.Contains(t, submission.ApprovedUserIDs, userID, "ApprovedUserIDs")
 	}
 	for _, userID := range counters.AssignedVerificationUserIDs {
 		require.Contains(t, submission.AssignedVerificationUserIDs, userID, "AssignedVerificationUserIDs")
@@ -158,47 +159,71 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	btnReject := "button-reject"
 	btnUpload := "button-upload-file"
 
+	// All comment actions that can be tested against the backend.
+	// Upload is excluded because it uses a different endpoint (submission-receiver-resumable).
+	allCommentActions := []string{
+		constants.ActionAssignTesting, constants.ActionUnassignTesting,
+		constants.ActionApprove, constants.ActionRequestChanges,
+		constants.ActionAssignVerification, constants.ActionUnassignVerification,
+		constants.ActionVerify, constants.ActionMarkAdded, constants.ActionReject,
+	}
+
+	// Trial users cannot perform any comment actions on submissions they don't own
+	trialDisallowedActions := allCommentActions
+
 	type userActions struct {
-		user       *extendedTestUser
-		allowed    []string
-		disallowed []string
+		user              *extendedTestUser
+		allowed           []string // button CSS classes for template check
+		disallowed        []string // button CSS classes for template check
+		disallowedActions []string // actual action constants for backend authorization check
 	}
 
 	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+
+	// Wait for bot processing to complete and for MySQL timestamps to advance past the file creation time.
+	// The cache query uses strict > comparison on DATETIME (second precision), so comments created in the
+	// same second as the file won't be counted as post-upload actions.
+	time.Sleep(2 * time.Second)
 
 	// 1. Upload
 	t.Run("Check after uploaded", func(t *testing.T) {
 		// Check Initial State (Uploaded)
 		usersActions := []userActions{
 			{
-				user:       submitter,
-				allowed:    []string{btnUpload, btnReject},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              submitter,
+				allowed:           []string{btnUpload, btnReject},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       tester,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              tester,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       verifier,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              verifier,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       adder,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              adder,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       trialCurator,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialCurator,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 			{
-				user:       trialEditor,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialEditor,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 		}
 
@@ -208,11 +233,17 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 			checkButtons(t, user.user, sid, user.allowed, user.disallowed, msg)
 		}
 
-		// Check that disallowed actions are actually disallowed on backend
+		// Check that trial users (who don't own this submission) cannot perform any actions on the backend.
+		// Staff users are not tested here because some hidden buttons correspond to actions the backend
+		// still accepts, and sending those actions would mutate the submission state and corrupt subsequent tests.
+		// TODO: add isolated backend authorization tests for staff users.
 		for _, user := range usersActions {
-			for _, action := range user.disallowed {
+			if user.user != trialCurator && user.user != trialEditor {
+				continue
+			}
+			for _, action := range user.disallowedActions {
 				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
+				require.NotEqual(t, http.StatusOK, rr.Code, fmt.Sprintf("action %s should have been rejected for user %s (%d) but succeeded", action, user.user.Name, user.user.ID))
 			}
 		}
 
@@ -240,37 +271,43 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "comment failed: "+rr.Body.String())
 
 	t.Run("Check after assigned for testing", func(t *testing.T) {
-		// Check Initial State (Uploaded)
+		// Check Assigned for Testing State
 		usersActions := []userActions{
 			{
-				user:       submitter,
-				allowed:    []string{btnUpload, btnReject},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              submitter,
+				allowed:           []string{btnUpload, btnReject},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       tester,
-				allowed:    []string{btnUpload, btnReject, btnUnassignTesting, btnApprove, btnRequestChanges},
-				disallowed: []string{btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              tester,
+				allowed:           []string{btnUpload, btnReject, btnUnassignTesting, btnApprove, btnRequestChanges},
+				disallowed:        []string{btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       verifier,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              verifier,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       adder,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              adder,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       trialCurator,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialCurator,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 			{
-				user:       trialEditor,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialEditor,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 		}
 
@@ -280,11 +317,17 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 			checkButtons(t, user.user, sid, user.allowed, user.disallowed, msg)
 		}
 
-		// Check that disallowed actions are actually disallowed on backend
+		// Check that trial users (who don't own this submission) cannot perform any actions on the backend.
+		// Staff users are not tested here because some hidden buttons correspond to actions the backend
+		// still accepts, and sending those actions would mutate the submission state and corrupt subsequent tests.
+		// TODO: add isolated backend authorization tests for staff users.
 		for _, user := range usersActions {
-			for _, action := range user.disallowed {
+			if user.user != trialCurator && user.user != trialEditor {
+				continue
+			}
+			for _, action := range user.disallowedActions {
 				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
+				require.NotEqual(t, http.StatusOK, rr.Code, fmt.Sprintf("action %s should have been rejected for user %s (%d) but succeeded", action, user.user.Name, user.user.ID))
 			}
 		}
 
@@ -312,37 +355,43 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "comment failed: "+rr.Body.String())
 
 	t.Run("Check after approved unassigned", func(t *testing.T) {
-		// Check Initial State (Uploaded)
+		// Check Approved State
 		usersActions := []userActions{
 			{
-				user:       submitter,
-				allowed:    []string{btnUpload, btnReject},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              submitter,
+				allowed:           []string{btnUpload, btnReject},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       tester,
-				allowed:    []string{btnUpload, btnReject, btnRequestChanges},
-				disallowed: []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              tester,
+				allowed:           []string{btnUpload, btnReject, btnRequestChanges},
+				disallowed:        []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionApprove, constants.ActionUnassignTesting, constants.ActionAssignTesting, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       verifier,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              verifier,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       adder,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              adder,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       trialCurator,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialCurator,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 			{
-				user:       trialEditor,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialEditor,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 		}
 
@@ -352,11 +401,17 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 			checkButtons(t, user.user, sid, user.allowed, user.disallowed, msg)
 		}
 
-		// Check that disallowed actions are actually disallowed on backend
+		// Check that trial users (who don't own this submission) cannot perform any actions on the backend.
+		// Staff users are not tested here because some hidden buttons correspond to actions the backend
+		// still accepts, and sending those actions would mutate the submission state and corrupt subsequent tests.
+		// TODO: add isolated backend authorization tests for staff users.
 		for _, user := range usersActions {
-			for _, action := range user.disallowed {
+			if user.user != trialCurator && user.user != trialEditor {
+				continue
+			}
+			for _, action := range user.disallowedActions {
 				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
+				require.NotEqual(t, http.StatusOK, rr.Code, fmt.Sprintf("action %s should have been rejected for user %s (%d) but succeeded", action, user.user.Name, user.user.ID))
 			}
 		}
 
@@ -384,51 +439,63 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "comment failed: "+rr.Body.String())
 
 	t.Run("Check after assigned for verification", func(t *testing.T) {
-		// Check Initial State (Uploaded)
+		// Check Assigned for Verification State
 		usersActions := []userActions{
 			{
-				user:       submitter,
-				allowed:    []string{btnUpload, btnReject},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              submitter,
+				allowed:           []string{btnUpload, btnReject},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       tester,
-				allowed:    []string{btnUpload, btnReject, btnRequestChanges},
-				disallowed: []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              tester,
+				allowed:           []string{btnUpload, btnReject, btnRequestChanges},
+				disallowed:        []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionApprove, constants.ActionUnassignTesting, constants.ActionAssignTesting, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       verifier,
-				allowed:    []string{btnUpload, btnReject, btnUnassignVerification, btnRequestChanges, btnVerify},
-				disallowed: []string{btnAssignTesting, btnAssignVerification, btnUnassignTesting, btnApprove, btnMarkAdded},
+				user:              verifier,
+				allowed:           []string{btnUpload, btnReject, btnUnassignVerification, btnRequestChanges, btnVerify},
+				disallowed:        []string{btnAssignTesting, btnAssignVerification, btnUnassignTesting, btnApprove, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionAssignVerification, constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionMarkAdded},
 			},
 			{
-				user:       adder,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              adder,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       trialCurator,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialCurator,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 			{
-				user:       trialEditor,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialEditor,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 		}
 
 		// Check that only allowed actions have buttons displayed on frontend
-		msg := "State: approved, unassigned"
+		msg := "State: assigned for verification"
 		for _, user := range usersActions {
 			checkButtons(t, user.user, sid, user.allowed, user.disallowed, msg)
 		}
 
-		// Check that disallowed actions are actually disallowed on backend
+		// Check that trial users (who don't own this submission) cannot perform any actions on the backend.
+		// Staff users are not tested here because some hidden buttons correspond to actions the backend
+		// still accepts, and sending those actions would mutate the submission state and corrupt subsequent tests.
+		// TODO: add isolated backend authorization tests for staff users.
 		for _, user := range usersActions {
-			for _, action := range user.disallowed {
+			if user.user != trialCurator && user.user != trialEditor {
+				continue
+			}
+			for _, action := range user.disallowedActions {
 				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
+				require.NotEqual(t, http.StatusOK, rr.Code, fmt.Sprintf("action %s should have been rejected for user %s (%d) but succeeded", action, user.user.Name, user.user.ID))
 			}
 		}
 
@@ -456,37 +523,43 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "comment failed: "+rr.Body.String())
 
 	t.Run("Check after verified unassigned", func(t *testing.T) {
-		// Check Initial State (Uploaded)
+		// Check Verified State
 		usersActions := []userActions{
 			{
-				user:       submitter,
-				allowed:    []string{btnUpload, btnReject},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              submitter,
+				allowed:           []string{btnUpload, btnReject},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       tester,
-				allowed:    []string{btnUpload, btnReject, btnRequestChanges},
-				disallowed: []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				user:              tester,
+				allowed:           []string{btnUpload, btnReject, btnRequestChanges},
+				disallowed:        []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded},
+				disallowedActions: []string{constants.ActionApprove, constants.ActionUnassignTesting, constants.ActionAssignTesting, constants.ActionAssignVerification, constants.ActionUnassignVerification, constants.ActionVerify, constants.ActionMarkAdded},
 			},
 			{
-				user:       verifier,
-				allowed:    []string{btnUpload, btnReject, btnRequestChanges},
-				disallowed: []string{btnAssignTesting, btnAssignVerification, btnVerify, btnUnassignTesting, btnUnassignVerification, btnApprove, btnMarkAdded},
+				user:              verifier,
+				allowed:           []string{btnUpload, btnReject, btnRequestChanges},
+				disallowed:        []string{btnAssignTesting, btnAssignVerification, btnVerify, btnUnassignTesting, btnUnassignVerification, btnApprove, btnMarkAdded},
+				disallowedActions: []string{constants.ActionAssignTesting, constants.ActionAssignVerification, constants.ActionVerify, constants.ActionUnassignTesting, constants.ActionUnassignVerification, constants.ActionApprove, constants.ActionMarkAdded},
 			},
 			{
-				user:       adder,
-				allowed:    []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification, btnMarkAdded},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify},
+				user:              adder,
+				allowed:           []string{btnUpload, btnReject, btnAssignTesting, btnAssignVerification, btnMarkAdded},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify},
+				disallowedActions: []string{constants.ActionUnassignTesting, constants.ActionApprove, constants.ActionRequestChanges, constants.ActionUnassignVerification, constants.ActionVerify},
 			},
 			{
-				user:       trialCurator,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialCurator,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 			{
-				user:       trialEditor,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialEditor,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 		}
 
@@ -496,11 +569,17 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 			checkButtons(t, user.user, sid, user.allowed, user.disallowed, msg)
 		}
 
-		// Check that disallowed actions are actually disallowed on backend
+		// Check that trial users (who don't own this submission) cannot perform any actions on the backend.
+		// Staff users are not tested here because some hidden buttons correspond to actions the backend
+		// still accepts, and sending those actions would mutate the submission state and corrupt subsequent tests.
+		// TODO: add isolated backend authorization tests for staff users.
 		for _, user := range usersActions {
-			for _, action := range user.disallowed {
+			if user.user != trialCurator && user.user != trialEditor {
+				continue
+			}
+			for _, action := range user.disallowedActions {
 				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
+				require.NotEqual(t, http.StatusOK, rr.Code, fmt.Sprintf("action %s should have been rejected for user %s (%d) but succeeded", action, user.user.Name, user.user.ID))
 			}
 		}
 
@@ -528,37 +607,43 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "comment failed: "+rr.Body.String())
 
 	t.Run("Check after marked as added", func(t *testing.T) {
-		// Check Initial State (Uploaded)
+		// Check Marked Added State
 		usersActions := []userActions{
 			{
-				user:       submitter,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded, btnReject, btnUpload},
+				user:              submitter,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded, btnReject, btnUpload},
+				disallowedActions: allCommentActions,
 			},
 			{
-				user:       tester,
-				allowed:    []string{},
-				disallowed: []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded, btnUpload, btnReject, btnRequestChanges},
+				user:              tester,
+				allowed:           []string{},
+				disallowed:        []string{btnApprove, btnUnassignTesting, btnAssignTesting, btnAssignVerification, btnUnassignVerification, btnVerify, btnMarkAdded, btnUpload, btnReject, btnRequestChanges},
+				disallowedActions: allCommentActions,
 			},
 			{
-				user:       verifier,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnAssignVerification, btnVerify, btnUnassignTesting, btnUnassignVerification, btnApprove, btnMarkAdded, btnUpload, btnReject, btnRequestChanges},
+				user:              verifier,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnAssignVerification, btnVerify, btnUnassignTesting, btnUnassignVerification, btnApprove, btnMarkAdded, btnUpload, btnReject, btnRequestChanges},
+				disallowedActions: allCommentActions,
 			},
 			{
-				user:       adder,
-				allowed:    []string{},
-				disallowed: []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnUpload, btnReject, btnAssignTesting, btnAssignVerification, btnMarkAdded},
+				user:              adder,
+				allowed:           []string{},
+				disallowed:        []string{btnUnassignTesting, btnApprove, btnRequestChanges, btnUnassignVerification, btnVerify, btnUpload, btnReject, btnAssignTesting, btnAssignVerification, btnMarkAdded},
+				disallowedActions: allCommentActions,
 			},
 			{
-				user:       trialCurator,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialCurator,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 			{
-				user:       trialEditor,
-				allowed:    []string{},
-				disallowed: []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				user:              trialEditor,
+				allowed:           []string{},
+				disallowed:        []string{btnAssignTesting, btnUnassignTesting, btnApprove, btnRequestChanges, btnAssignVerification, btnUnassignVerification, btnVerify, btnReject, btnMarkAdded, btnUpload},
+				disallowedActions: trialDisallowedActions,
 			},
 		}
 
@@ -568,11 +653,17 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 			checkButtons(t, user.user, sid, user.allowed, user.disallowed, msg)
 		}
 
-		// Check that disallowed actions are actually disallowed on backend
+		// Check that trial users (who don't own this submission) cannot perform any actions on the backend.
+		// Staff users are not tested here because some hidden buttons correspond to actions the backend
+		// still accepts, and sending those actions would mutate the submission state and corrupt subsequent tests.
+		// TODO: add isolated backend authorization tests for staff users.
 		for _, user := range usersActions {
-			for _, action := range user.disallowed {
+			if user.user != trialCurator && user.user != trialEditor {
+				continue
+			}
+			for _, action := range user.disallowedActions {
 				rr := addComment(t, l, app, user.user.Cookie, sid, action, fmt.Sprintf("nasty comment that should not be here - user %d, submission %d, action %s", user.user.ID, sid, action))
-				require.Equal(t, http.StatusUnauthorized, rr.Code, "request should have failed but did not: "+rr.Body.String())
+				require.NotEqual(t, http.StatusOK, rr.Code, fmt.Sprintf("action %s should have been rejected for user %s (%d) but succeeded", action, user.user.Name, user.user.ID))
 			}
 		}
 

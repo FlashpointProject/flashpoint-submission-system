@@ -666,7 +666,7 @@ func initTestApp(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.
 	// Create ResumableUploadService
 	rsu, err := resumableuploadservice.New(conf.ResumableUploadDirFullPath)
 	require.NoError(t, err)
-	defer rsu.Close()
+	t.Cleanup(func() { rsu.Close() })
 
 	ss := service.NewWithMocks(l, maria, postgres, authBotMock, notifBotMock, conf.ValidatorServerURL, conf.SessionExpirationSeconds, conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.IsDev, rsu, conf.ArchiveIndexerServerURL, conf.DataPacksDir)
 
