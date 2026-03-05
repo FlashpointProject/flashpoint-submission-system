@@ -93,6 +93,6 @@ type SessionInfo struct {
 	UID       int64  `json:"uid"`
 	Scope     string `json:"scope"`
 	Client    string `json:"client"`
-	ExpiresAt int64  `json:"expires_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 	IpAddr    string `json:"ip_addr"`
 }

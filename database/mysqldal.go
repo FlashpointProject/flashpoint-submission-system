@@ -38,7 +38,7 @@ func OpenDB(l *logrus.Entry, conf *config.Config) *sql.DB {
 	dbName := conf.DBName
 
 	db, err := sql.Open("mysql",
-		fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true", user, pass, ip, port, dbName))
+		fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC", user, pass, ip, port, dbName))
 	if err != nil {
 		l.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func (dbs *MysqlSession) Ctx() context.Context {
 
 // StoreSession store session into the DAL with set expiration date
 func (d *mysqlDAL) StoreSession(dbs DBSession, key string, uid int64, durationSeconds int64, scope string, client string, ipAddr string) error {
-	expiration := time.Now().Add(time.Second * time.Duration(durationSeconds)).Unix()
+	expiration := time.Now().Add(time.Second * time.Duration(durationSeconds))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO session (secret, uid, expires_at, scope, client, ip_addr) VALUES (?, ?, ?, ?, ?, ?)`, key, uid, expiration, scope, client, ipAddr)
 	return err
 }
@@ -112,24 +112,12 @@ func (d *mysqlDAL) GetSessions(dbs DBSession, uid int64) ([]*types.SessionInfo, 
 	result := make([]*types.SessionInfo, 0)
 
 	for rows.Next() {
-		var id int64
-		var uid int64
-		var expiration int64
-		var scope string
-		var ipAddr string
-		var client string
-		err := rows.Scan(&id, &uid, &scope, &client, &expiration, &ipAddr)
+		s := &types.SessionInfo{}
+		err := rows.Scan(&s.ID, &s.UID, &s.Scope, &s.Client, &s.ExpiresAt, &s.IpAddr)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, &types.SessionInfo{
-			ID:        id,
-			UID:       uid,
-			Scope:     scope,
-			Client:    client,
-			IpAddr:    ipAddr,
-			ExpiresAt: expiration,
-		})
+		result = append(result, s)
 	}
 
 	return result, nil
@@ -139,29 +127,17 @@ func (d *mysqlDAL) GetSessions(dbs DBSession, uid int64) ([]*types.SessionInfo, 
 func (d *mysqlDAL) GetSessionAuthInfo(dbs DBSession, secret string) (*types.SessionInfo, bool, error) {
 	row := dbs.Tx().QueryRowContext(dbs.Ctx(), `SELECT id, uid, scope, client, expires_at, ip_addr FROM session WHERE secret=?`, secret)
 
-	var id int64
-	var uid int64
-	var expiration int64
-	var scope string
-	var ipAddr string
-	var client string
-	err := row.Scan(&id, &uid, &scope, &client, &expiration, &ipAddr)
+	s := &types.SessionInfo{}
+	err := row.Scan(&s.ID, &s.UID, &s.Scope, &s.Client, &s.ExpiresAt, &s.IpAddr)
 	if err != nil {
 		return nil, false, err
 	}
 
-	if expiration <= time.Now().Unix() {
+	if !s.ExpiresAt.After(time.Now()) {
 		return nil, false, nil
 	}
 
-	return &types.SessionInfo{
-		ID:        id,
-		UID:       uid,
-		Scope:     scope,
-		Client:    client,
-		IpAddr:    ipAddr,
-		ExpiresAt: expiration,
-	}, true, nil
+	return s, true, nil
 }
 
 func (d *mysqlDAL) RevokeSession(dbs DBSession, uid int64, sessionID int64) error {
@@ -297,7 +273,7 @@ func (d *mysqlDAL) StoreSubmission(dbs DBSession, submissionLevel string) (int64
 func (d *mysqlDAL) StoreSubmissionFile(dbs DBSession, s *types.SubmissionFile) (int64, error) {
 	res, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO submission_file (fk_user_id, fk_submission_id, original_filename, current_filename, size, created_at, md5sum, sha256sum) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.SubmitterID, s.SubmissionID, s.OriginalFilename, s.CurrentFilename, s.Size, s.UploadedAt.Unix(), s.MD5Sum, s.SHA256Sum)
+		s.SubmitterID, s.SubmissionID, s.OriginalFilename, s.CurrentFilename, s.Size, s.UploadedAt, s.MD5Sum, s.SHA256Sum)
 	if err != nil {
 		return 0, err
 	}
@@ -337,12 +313,10 @@ func (d *mysqlDAL) GetSubmissionFiles(dbs DBSession, sfids []int64) ([]*types.Su
 	var result = make([]*types.SubmissionFile, 0, len(sfids))
 	for rows.Next() {
 		sf := &types.SubmissionFile{}
-		var uploadedAt int64
-		err := rows.Scan(&sf.ID, &sf.SubmitterID, &sf.SubmissionID, &sf.OriginalFilename, &sf.CurrentFilename, &sf.Size, &uploadedAt, &sf.MD5Sum, &sf.SHA256Sum)
+		err := rows.Scan(&sf.ID, &sf.SubmitterID, &sf.SubmissionID, &sf.OriginalFilename, &sf.CurrentFilename, &sf.Size, &sf.UploadedAt, &sf.MD5Sum, &sf.SHA256Sum)
 		if err != nil {
 			return nil, err
 		}
-		sf.UploadedAt = time.Unix(uploadedAt, 0)
 		result = append(result, sf)
 	}
 
@@ -368,16 +342,14 @@ func (d *mysqlDAL) GetExtendedSubmissionFilesBySubmissionID(dbs DBSession, sid i
 	}
 	var result = make([]*types.ExtendedSubmissionFile, 0)
 	var avatar string
-	var uploadedAt int64
 	for rows.Next() {
 		sf := &types.ExtendedSubmissionFile{SubmissionID: sid}
 		err := rows.Scan(&sf.FileID, &sf.SubmitterID, &sf.SubmitterUsername, &avatar,
-			&sf.OriginalFilename, &sf.CurrentFilename, &sf.Size, &uploadedAt, &sf.MD5Sum, &sf.SHA256Sum)
+			&sf.OriginalFilename, &sf.CurrentFilename, &sf.Size, &sf.UploadedAt, &sf.MD5Sum, &sf.SHA256Sum)
 		if err != nil {
 			return nil, err
 		}
 		sf.SubmitterAvatarURL = utils.FormatAvatarURL(sf.SubmitterID, avatar)
-		sf.UploadedAt = time.Unix(uploadedAt, 0)
 		result = append(result, sf)
 	}
 	return result, nil
@@ -450,7 +422,7 @@ func (d *mysqlDAL) StoreComment(dbs DBSession, c *types.Comment) (int64, error) 
 	res, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		INSERT INTO comment (fk_user_id, fk_submission_id, message, fk_action_id, created_at) 
         VALUES (?, ?, ?, (SELECT id FROM action WHERE name=?), ?)`,
-		c.AuthorID, c.SubmissionID, msg, c.Action, c.CreatedAt.Unix())
+		c.AuthorID, c.SubmissionID, msg, c.Action, c.CreatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -493,16 +465,14 @@ func (d *mysqlDAL) GetExtendedCommentsBySubmissionID(dbs DBSession, sid int64) (
 
 	result := make([]*types.ExtendedComment, 0)
 
-	var createdAt int64
 	var avatar string
 
 	for rows.Next() {
 
 		ec := &types.ExtendedComment{SubmissionID: sid}
-		if err := rows.Scan(&ec.CommentID, &ec.AuthorID, &ec.Username, &avatar, &ec.Message, &ec.Action, &createdAt); err != nil {
+		if err := rows.Scan(&ec.CommentID, &ec.AuthorID, &ec.Username, &avatar, &ec.Message, &ec.Action, &ec.CreatedAt); err != nil {
 			return nil, err
 		}
-		ec.CreatedAt = time.Unix(createdAt, 0)
 		ec.AvatarURL = utils.FormatAvatarURL(ec.AuthorID, avatar)
 		result = append(result, ec)
 	}
@@ -519,11 +489,9 @@ func (d *mysqlDAL) GetCommentByID(dbs DBSession, cid int64) (*types.Comment, err
 		cid)
 
 	c := &types.Comment{}
-	var createdAt int64
-	if err := row.Scan(&c.AuthorID, &c.SubmissionID, &c.Message, &c.Action, &createdAt); err != nil {
+	if err := row.Scan(&c.AuthorID, &c.SubmissionID, &c.Message, &c.Action, &c.CreatedAt); err != nil {
 		return nil, err
 	}
-	c.CreatedAt = time.Unix(createdAt, 0)
 
 	return c, nil
 }
@@ -547,7 +515,7 @@ func (d *mysqlDAL) SoftDeleteSubmissionFile(dbs DBSession, sfid int64, deleteRea
 	}
 
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE submission_file SET deleted_at = UNIX_TIMESTAMP(), deleted_reason = ?
+		UPDATE submission_file SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE id  = ?`,
 		deleteReason, sfid)
 	if err != nil {
@@ -565,7 +533,7 @@ func (d *mysqlDAL) SoftDeleteSubmissionFile(dbs DBSession, sfid int64, deleteRea
 // SoftDeleteSubmission marks submission and its files as deleted
 func (d *mysqlDAL) SoftDeleteSubmission(dbs DBSession, sid int64, deleteReason string) error {
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE submission_file SET deleted_at = UNIX_TIMESTAMP(), deleted_reason = ?
+		UPDATE submission_file SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE fk_submission_id = ?`,
 		deleteReason, sid)
 	if err != nil {
@@ -573,7 +541,7 @@ func (d *mysqlDAL) SoftDeleteSubmission(dbs DBSession, sid int64, deleteReason s
 	}
 
 	_, err = dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE comment SET deleted_at = UNIX_TIMESTAMP(), deleted_reason = ?
+		UPDATE comment SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE fk_submission_id = ?`,
 		deleteReason, sid)
 	if err != nil {
@@ -581,7 +549,7 @@ func (d *mysqlDAL) SoftDeleteSubmission(dbs DBSession, sid int64, deleteReason s
 	}
 
 	_, err = dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE submission SET deleted_at = UNIX_TIMESTAMP(), deleted_reason = ?
+		UPDATE submission SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE id = ?`,
 		deleteReason, sid)
 	if err != nil {
@@ -599,7 +567,7 @@ func (d *mysqlDAL) SoftDeleteSubmission(dbs DBSession, sid int64, deleteReason s
 // SoftDeleteComment marks comment as deleted
 func (d *mysqlDAL) SoftDeleteComment(dbs DBSession, cid int64, deleteReason string) error {
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE comment SET deleted_at = UNIX_TIMESTAMP(), deleted_reason = ?
+		UPDATE comment SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE id = ?`,
 		deleteReason, cid)
 	if err != nil {
@@ -678,7 +646,7 @@ func (d *mysqlDAL) GetNotificationSettingsByUserID(dbs DBSession, uid int64) ([]
 func (d *mysqlDAL) SubscribeUserToSubmission(dbs DBSession, uid, sid int64) error {
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		INSERT INTO submission_notification_subscription (fk_user_id, fk_submission_id, created_at)
-		VALUES (?, ?, UNIX_TIMESTAMP())`,
+		VALUES (?, ?, NOW(6))`,
 		uid, sid)
 	return err
 }
@@ -713,7 +681,7 @@ func (d *mysqlDAL) IsUserSubscribedToSubmission(dbs DBSession, uid, sid int64) (
 func (d *mysqlDAL) StoreNotification(dbs DBSession, msg, notificationType string) error {
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		INSERT INTO submission_notification (message, fk_submission_notification_type_id, created_at)
-		VALUES(?, (SELECT id FROM submission_notification_type WHERE name = ?), UNIX_TIMESTAMP())`,
+		VALUES(?, (SELECT id FROM submission_notification_type WHERE name = ?), NOW(6))`,
 		msg, notificationType)
 
 	return err
@@ -782,17 +750,15 @@ func (d *mysqlDAL) GetOldestUnsentNotification(dbs DBSession) (*types.Notificati
 		ORDER BY created_at LIMIT 1`)
 
 	notification := &types.Notification{}
-	var createdAt int64
-	var sentAt *int64
+	var sentAt *time.Time
 
-	err := row.Scan(&notification.ID, &notification.Type, &notification.Message, &createdAt, &sentAt)
+	err := row.Scan(&notification.ID, &notification.Type, &notification.Message, &notification.CreatedAt, &sentAt)
 	if err != nil {
 		return nil, err
 	}
 
-	notification.CreatedAt = time.Unix(createdAt, 0)
 	if sentAt != nil {
-		notification.SentAt = time.Unix(*sentAt, 0)
+		notification.SentAt = *sentAt
 	}
 
 	return notification, nil
@@ -801,7 +767,7 @@ func (d *mysqlDAL) GetOldestUnsentNotification(dbs DBSession) (*types.Notificati
 // MarkNotificationAsSent returns oldest unsent notification
 func (d *mysqlDAL) MarkNotificationAsSent(dbs DBSession, nid int64) error {
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE submission_notification SET sent_at = UNIX_TIMESTAMP() 
+		UPDATE submission_notification SET sent_at = NOW(6) 
 		WHERE id = ?`, nid)
 
 	return err
@@ -920,7 +886,7 @@ func (d *mysqlDAL) StoreMasterDBGames(dbs DBSession, games []*types.MasterDataba
 	for _, g := range games {
 		data = append(data, g.UUID, g.Title, g.AlternateTitles, g.Series, g.Developer, g.Publisher, g.Platform,
 			g.Extreme, g.PlayMode, g.Status, g.GameNotes, g.Source, g.LaunchCommand, g.ReleaseDate,
-			g.Version, g.OriginalDescription, g.Languages, g.Library, g.Tags, g.DateAdded.Unix(), g.DateModified.Unix())
+			g.Version, g.OriginalDescription, g.Languages, g.Library, g.Tags, g.DateAdded, g.DateModified)
 	}
 
 	const valuePlaceholder = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -1058,15 +1024,12 @@ func (d *mysqlDAL) GetCommentsByUserIDAndAction(dbs DBSession, uid int64, action
 
 	result := make([]*types.Comment, 0)
 
-	var createdAt int64
-
 	for rows.Next() {
 
 		c := &types.Comment{AuthorID: uid, Action: action}
-		if err := rows.Scan(&c.ID, &c.Message, &createdAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Message, &c.CreatedAt); err != nil {
 			return nil, err
 		}
-		c.CreatedAt = time.Unix(createdAt, 0)
 		result = append(result, c)
 	}
 
@@ -1076,7 +1039,7 @@ func (d *mysqlDAL) GetCommentsByUserIDAndAction(dbs DBSession, uid int64, action
 // FreezeSubmission marks submission as frozen
 func (d *mysqlDAL) FreezeSubmission(dbs DBSession, sid int64) error {
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
-		UPDATE submission SET frozen_at = UNIX_TIMESTAMP()
+		UPDATE submission SET frozen_at = NOW(6)
 		WHERE id = ?`,
 		sid)
 	if err != nil {

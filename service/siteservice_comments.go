@@ -173,7 +173,7 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 				SubmissionID: sid,
 				Message:      nil,
 				Action:       constants.ActionUnassignTesting,
-				CreatedAt:    s.clock.Now().Add(time.Second),
+				CreatedAt:    s.clock.Now().Add(time.Microsecond),
 			}
 
 			cid, err := s.dal.StoreComment(dbs, c)
@@ -191,7 +191,7 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 				SubmissionID: sid,
 				Message:      nil,
 				Action:       constants.ActionUnassignVerification,
-				CreatedAt:    s.clock.Now().Add(time.Second),
+				CreatedAt:    s.clock.Now().Add(time.Microsecond),
 			}
 
 			cid, err := s.dal.StoreComment(dbs, c)
@@ -228,7 +228,7 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 				SubmissionID: sid,
 				Message:      &msg,
 				Action:       constants.ActionSystem,
-				CreatedAt:    s.clock.Now().Add(time.Second * 2),
+				CreatedAt:    s.clock.Now().Add(time.Microsecond * 2),
 			}
 
 			cid, err := s.dal.StoreComment(dbs, c)
