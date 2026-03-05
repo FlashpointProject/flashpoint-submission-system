@@ -78,7 +78,6 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 	}
 }
 
-// TODO add test for freeze/unfreeze
 // TODO add test for bot override
 // TODO add test with fix uploads
 // TODO add test with real validator and metadata edit
