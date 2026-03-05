@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -492,6 +493,8 @@ func createTestCookie(t *testing.T, l *logrus.Entry, authToken *service.AuthToke
 	return cookie
 }
 
+var uploadCounter atomic.Int64
+
 func uploadTestSubmission(t *testing.T, l *logrus.Entry, app *transport.App, filename string, cookie *http.Cookie, sid *int64) int64 {
 	if sid == nil {
 		l.Infof("uploading submission")
@@ -503,6 +506,11 @@ func uploadTestSubmission(t *testing.T, l *logrus.Entry, app *transport.App, fil
 	filePath := filename
 	fileContent, err := os.ReadFile(filePath)
 	require.NoError(t, err)
+
+	// Append unique bytes so each upload has distinct checksums (avoids duplicate file detection)
+	counter := uploadCounter.Add(1)
+	uniqueSuffix := []byte(fmt.Sprintf("\n__test_upload_%d__", counter))
+	fileContent = append(fileContent, uniqueSuffix...)
 	fileSize := int64(len(fileContent))
 
 	// We need to simulate chunk upload. Since it's small enough, one chunk.
@@ -528,7 +536,7 @@ func uploadTestSubmission(t *testing.T, l *logrus.Entry, app *transport.App, fil
 	q.Add("resumableCurrentChunkSize", strconv.FormatInt(fileSize, 10))
 	q.Add("resumableTotalSize", strconv.FormatInt(fileSize, 10))
 	q.Add("resumableType", "application/x-7z-compressed")
-	q.Add("resumableIdentifier", fmt.Sprintf("%d-%s", fileSize, "test-file-id"))
+	q.Add("resumableIdentifier", fmt.Sprintf("%d-test-file-id-%d", fileSize, uploadCounter.Add(1)))
 	q.Add("resumableFilename", filename)
 	q.Add("resumableRelativePath", filename)
 	q.Add("resumableTotalChunks", "1")
