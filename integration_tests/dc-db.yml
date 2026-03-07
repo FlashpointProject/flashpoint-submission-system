@@ -5,8 +5,8 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.50.0.0/16
-          gateway: 10.50.0.1
+        - subnet: 10.51.0.0/16
+          gateway: 10.51.0.0.1
 
 services:
   database:
@@ -25,7 +25,7 @@ services:
       - fpfssdb_data:/var/lib/mysql
     networks:
       fpfssnetwork:
-        ipv4_address: 10.50.0.2
+        ipv4_address: 10.51.0.2
     command: mysqld --max_allowed_packet=256M --sql_mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION" --log_bin_trust_function_creators=1
   postgres:
     container_name: ${POSTGRES_CONTAINER_NAME}
@@ -49,7 +49,7 @@ services:
       - "${POSTGRES_PORT}:5432"
     networks:
       fpfssnetwork:
-        ipv4_address: 10.50.0.3
+        ipv4_address: 10.51.0.3
 #  validator:
 #    container_name: ${VALIDATOR_CONTAINER_NAME}
 #    restart: unless-stopped

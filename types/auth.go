@@ -1,9 +1,6 @@
 package types
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
 const (
 	DeviceFlowPending      = 0
@@ -97,24 +94,3 @@ type SessionInfo struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	IpAddr    string    `json:"ip_addr"`
 }
-
-// TODO this might not be needed
-// func (s SessionInfo) MarshalJSON() ([]byte, error) {
-// 	type sessionInfoJSON struct {
-// 		ID        int64  `json:"id"`
-// 		UID       int64  `json:"uid"`
-// 		Scope     string `json:"scope"`
-// 		Client    string `json:"client"`
-// 		ExpiresAt int64  `json:"expires_at"` // kept in int64 seconds time for backwards compatibility
-// 		IpAddr    string `json:"ip_addr"`
-// 	}
-
-// 	return json.Marshal(sessionInfoJSON{
-// 		ID:        s.ID,
-// 		UID:       s.UID,
-// 		Scope:     s.Scope,
-// 		Client:    s.Client,
-// 		ExpiresAt: s.ExpiresAt.Unix(),
-// 		IpAddr:    s.IpAddr,
-// 	})
-// }
