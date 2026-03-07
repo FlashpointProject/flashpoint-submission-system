@@ -73,7 +73,12 @@ CREATE INDEX idx_masterdb_game_date_added ON masterdb_game (date_added);
 
 -- masterdb_game.date_modified: BIGINT NULL
 ALTER TABLE masterdb_game ADD COLUMN date_modified_new DATETIME(6) NULL DEFAULT NULL;
-UPDATE masterdb_game SET date_modified_new = FROM_UNIXTIME(date_modified) WHERE date_modified IS NOT NULL;
+UPDATE masterdb_game
+SET date_modified_new = CASE
+    WHEN date_modified < 0 THEN '1000-01-01 00:00:00.000000'
+    ELSE FROM_UNIXTIME(date_modified)
+END
+WHERE date_modified IS NOT NULL;
 ALTER TABLE masterdb_game DROP COLUMN date_modified;
 ALTER TABLE masterdb_game CHANGE date_modified_new date_modified DATETIME(6) NULL DEFAULT NULL;
 CREATE INDEX idx_masterdb_game_date_modified ON masterdb_game (date_modified);

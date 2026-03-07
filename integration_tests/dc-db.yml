@@ -12,7 +12,7 @@ services:
   database:
     container_name: ${DB_CONTAINER_NAME}
     restart: unless-stopped
-    image: mariadb:11.1.2
+    image: mariadb:11.1.5
     platform: linux/amd64
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
@@ -22,7 +22,7 @@ services:
     ports:
       - "${DB_PORT}:3306" # TODO unmap in prod
     volumes:
-      - fpfssdb_data:/var/lib/mysql
+      - fpfssdb_data_test:/var/lib/mysql
     networks:
       fpfssnetwork-test:
         ipv4_address: 10.51.0.2
@@ -40,7 +40,7 @@ services:
         reservations:
           memory: 512m
     volumes:
-      - fpfss_postgres_data:/var/lib/postgresql/data
+      - fpfss_postgres_data_test:/var/lib/postgresql/data
       - ./backups/pgdb:/var/lib/postgresql/backups
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -69,5 +69,5 @@ services:
 #        ipv4_address: 10.50.0.4
 
 volumes:
-  fpfssdb_data:
-  fpfss_postgres_data:
+  fpfssdb_data_test:
+  fpfss_postgres_data_test:

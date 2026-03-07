@@ -10,7 +10,7 @@ services:
   database:
     container_name: ${DB_CONTAINER_NAME}
     restart: unless-stopped
-    image: mariadb:11.1.2
+    image: mariadb:11.1.5
     platform: linux/amd64
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
