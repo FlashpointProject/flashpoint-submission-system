@@ -1,4 +1,4 @@
-FROM golang:1.22 as build
+FROM golang:1.26.1 as build
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ ENV GIT_COMMIT=$GIT_COMMIT
 RUN CGO_ENABLED=0 GOOS=linux go build -o /fpfss ./main/*.go
 
 
-FROM alpine:3.19 as deploy
+FROM alpine:3.23 as deploy
 ENV GIT_COMMIT="its fucked"
 COPY --from=build /fpfss /fpfss
 COPY /templates /templates

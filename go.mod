@@ -1,6 +1,6 @@
 module github.com/FlashpointProject/flashpoint-submission-system
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
