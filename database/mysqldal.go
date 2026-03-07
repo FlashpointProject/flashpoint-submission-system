@@ -38,7 +38,7 @@ func OpenDB(l *logrus.Entry, conf *config.Config) *sql.DB {
 	dbName := conf.DBName
 
 	db, err := sql.Open("mysql",
-		fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC", user, pass, ip, port, dbName))
+		fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC&time_zone=%%27%%2B00%%3A00%%27", user, pass, ip, port, dbName))
 	if err != nil {
 		l.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func (dbs *MysqlSession) Ctx() context.Context {
 
 // StoreSession store session into the DAL with set expiration date
 func (d *mysqlDAL) StoreSession(dbs DBSession, key string, uid int64, durationSeconds int64, scope string, client string, ipAddr string) error {
-	expiration := time.Now().Add(time.Second * time.Duration(durationSeconds))
+	expiration := time.Now().UTC().Add(time.Second * time.Duration(durationSeconds))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO session (secret, uid, expires_at, scope, client, ip_addr) VALUES (?, ?, ?, ?, ?, ?)`, key, uid, expiration, scope, client, ipAddr)
 	return err
 }

@@ -156,7 +156,7 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 		OriginalFilename: origFilename,
 		CurrentFilename:  filename,
 		Size:             filesize,
-		UploadedAt:       s.clock.Now(),
+		UploadedAt:       s.clock.Now().UTC(),
 		MD5Sum:           hex.EncodeToString(md5sum.Sum(nil)),
 		SHA256Sum:        hex.EncodeToString(sha256sum.Sum(nil)),
 	}
@@ -186,7 +186,7 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 		SubmissionID: submissionID,
 		Message:      nil,
 		Action:       action,
-		CreatedAt:    s.clock.Now(),
+		CreatedAt:    s.clock.Now().UTC(),
 	}
 
 	cid, err := s.dal.StoreComment(dbs, c)
@@ -316,7 +316,7 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 			SubmissionID: submissionID,
 			Message:      &msg,
 			Action:       constants.ActionSystem,
-			CreatedAt:    s.clock.Now().Add(time.Microsecond * 2),
+			CreatedAt:    s.clock.Now().UTC().Add(time.Microsecond * 2),
 		}
 
 		cid, err := s.dal.StoreComment(dbs, sc2)
@@ -357,7 +357,7 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 				SubmissionID: submissionID,
 				Message:      nil,
 				Action:       constants.ActionApprove,
-				CreatedAt:    s.clock.Now().Add(time.Microsecond * 3),
+				CreatedAt:    s.clock.Now().UTC().Add(time.Microsecond * 3),
 			}
 
 			_, err = s.dal.StoreComment(dbs, c)
@@ -372,7 +372,7 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 					SubmissionID: submissionID,
 					Message:      nil,
 					Action:       constants.ActionVerify,
-					CreatedAt:    s.clock.Now().Add(time.Microsecond * 4),
+					CreatedAt:    s.clock.Now().UTC().Add(time.Microsecond * 4),
 				}
 
 				_, err = s.dal.StoreComment(dbs, c)
@@ -630,7 +630,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 		OriginalFilename: filename,
 		CurrentFilename:  destinationFilename,
 		Size:             filesize,
-		UploadedAt:       s.clock.Now(),
+		UploadedAt:       s.clock.Now().UTC(),
 		MD5Sum:           hex.EncodeToString(md5sum.Sum(nil)),
 		SHA256Sum:        hex.EncodeToString(sha256sum.Sum(nil)),
 	}
@@ -657,7 +657,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 		SubmissionID: submissionID,
 		Message:      nil,
 		Action:       constants.ActionUpload,
-		CreatedAt:    s.clock.Now(),
+		CreatedAt:    s.clock.Now().UTC(),
 	}
 
 	cid, err := s.dal.StoreComment(dbs, c)
@@ -795,7 +795,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 			SubmissionID: submissionID,
 			Message:      msg,
 			Action:       constants.ActionSystem,
-			CreatedAt:    s.clock.Now().Add(time.Microsecond * 2),
+			CreatedAt:    s.clock.Now().UTC().Add(time.Microsecond * 2),
 		}
 	} else {
 		utils.LogCtx(dbs.Ctx()).Debug("no similar curations found")
@@ -822,7 +822,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 			SubmissionID: submissionID,
 			Message:      &msg,
 			Action:       constants.ActionSystem,
-			CreatedAt:    s.clock.Now().Add(time.Microsecond * 2),
+			CreatedAt:    s.clock.Now().UTC().Add(time.Microsecond * 2),
 		}
 
 		cid, err := s.dal.StoreComment(dbs, sc2)
@@ -865,7 +865,7 @@ func (s *SiteService) convertValidatorResponseToComment(vr *types.ValidatorRespo
 	c := &types.Comment{
 		AuthorID:     constants.ValidatorID,
 		SubmissionID: vr.Meta.SubmissionID,
-		CreatedAt:    s.clock.Now().Add(time.Microsecond),
+		CreatedAt:    s.clock.Now().UTC().Add(time.Microsecond),
 	}
 
 	approvalMessage := "Looks good to me! 🤖"

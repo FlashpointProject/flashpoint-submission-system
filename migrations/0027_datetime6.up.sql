@@ -1,5 +1,6 @@
 -- Migrate all BIGINT timestamp columns to DATETIME(6) for microsecond precision.
 -- Uses a temp column approach to safely convert existing unix-second values.
+SET time_zone = '+00:00';
 
 -- comment.created_at: BIGINT NOT NULL
 ALTER TABLE comment ADD COLUMN created_at_new DATETIME(6) NOT NULL DEFAULT NOW(6);

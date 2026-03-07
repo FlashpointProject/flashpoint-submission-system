@@ -388,7 +388,7 @@ func recreateTestDatabases(t *testing.T) {
 			require.Fail(t, "timed out waiting for databases to be ready")
 		case <-ticker.C:
 			if !mysqlReady {
-				db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC", conf.DBUser, conf.DBPassword, conf.DBIP, conf.DBPort, conf.DBName))
+				db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC&time_zone=%%27%%2B00%%3A00%%27", conf.DBUser, conf.DBPassword, conf.DBIP, conf.DBPort, conf.DBName))
 				if err == nil {
 					if err := db.Ping(); err == nil {
 						mysqlReady = true
