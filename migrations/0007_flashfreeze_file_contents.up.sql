@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS flashfreeze_file_contents
     md5sum                 CHAR(32) NOT NULL,
     sha256sum              CHAR(64) NOT NULL,
     description            TEXT     NOT NULL,
-    FULLTEXT (filename) WITH PARSER NGRAM,
-    FULLTEXT (description) WITH PARSER NGRAM,
+    FULLTEXT (filename),
+    FULLTEXT (description),
     FOREIGN KEY (fk_flashfreeze_file_id) REFERENCES flashfreeze_file (id)
 );
 CREATE INDEX idx_flashfreeze_file_contents_size_compressed ON flashfreeze_file_contents (size_compressed);
