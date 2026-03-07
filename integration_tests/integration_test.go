@@ -13,6 +13,7 @@ import (
 )
 
 // TestPrintSchema prints the MariaDB schema for all tables with timestamp columns.
+// Modify as needed for debugging.
 func TestPrintSchema(t *testing.T) {
 	_, _, _, _, _, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
