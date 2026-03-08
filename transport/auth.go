@@ -281,11 +281,23 @@ func (a *App) HandleDiscordCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ageThreshold := time.Now().Add(-time.Hour * 24 * 30)
-	if !createdAt.Before(ageThreshold) {
-		utils.LogCtx(ctx).Warnf("user %d forbidden from logging in, account not old enough", discordUser.ID)
-		writeError(ctx, w, perr("access denied", http.StatusForbidden))
+	serverUser, err := a.Service.GetServerUser(ctx, discordUser.ID)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		writeError(ctx, w, perr("server user not found?", http.StatusInternalServerError))
 		return
+	}
+	serverRoles := make([]string, 0, len(serverUser.Roles))
+	for _, role := range serverUser.Roles {
+		serverRoles = append(serverRoles, role.Name)
+	}
+	if !constants.IsStaff(serverRoles) && !constants.IsTrialCurator(serverRoles) {
+		ageThreshold := time.Now().Add(-time.Hour * 24 * 30)
+		if !createdAt.Before(ageThreshold) {
+			utils.LogCtx(ctx).Warnf("user %d forbidden from logging in, account not old enough", discordUser.ID)
+			writeError(ctx, w, perr("access denied", http.StatusForbidden))
+			return
+		}
 	}
 
 	//userIsLongEnoughInServer, err := a.Service.IsUserLongEnoughInServer(ctx, discordUser.ID)
