@@ -5,13 +5,42 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
 )
+
+// TestPrintSchema prints the MariaDB schema for all tables with timestamp columns.
+// Modify as needed for debugging.
+func TestPrintSchema(t *testing.T) {
+	_, _, _, _, _, maria, postgres := setupIntegrationTest(t)
+	defer maria.Close()
+	defer postgres.Close()
+
+	rows, err := maria.Query(`
+		SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		AND (COLUMN_NAME LIKE '%_at' OR COLUMN_NAME LIKE 'date_%')
+		ORDER BY TABLE_NAME, ORDINAL_POSITION`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	t.Log("=== MariaDB Timestamp Columns ===")
+	for rows.Next() {
+		var tableName, colName, colType, nullable string
+		var colDefault *string
+		err := rows.Scan(&tableName, &colName, &colType, &nullable, &colDefault)
+		require.NoError(t, err)
+		def := "NULL"
+		if colDefault != nil {
+			def = *colDefault
+		}
+		t.Logf("%-45s %-15s nullable=%-3s default=%s", tableName+"."+colName, colType, nullable, def)
+	}
+}
 
 // TestFileSubmission verifies submission upload through resumable upload service.
 func TestFileSubmission(t *testing.T) {
@@ -75,9 +104,6 @@ func TestApproveVerifySubmission(t *testing.T) {
 	submissionFilename := "./test_files/Warpstar4K.7z"
 	submissionID := uploadTestSubmission(t, l, app, submissionFilename, submitterCookie, nil)
 	l.Infof("submission %d uploaded", submissionID)
-
-	l.Infof("sleeping for 2 seconds after upload")
-	time.Sleep(2 * time.Second)
 
 	// 2. Tester assigns and approves
 	conf := app.Conf

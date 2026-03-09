@@ -51,10 +51,10 @@ archive-indexer:
 
 dump-db:
 	mkdir -p ./backups/db/
-	docker exec ${DB_CONTAINER_NAME} /usr/bin/mysqldump -u root --password=${DB_ROOT_PASSWORD} ${DB_NAME} --compress --dump-date --verbose > ./backups/db/db-dump-${DB_NAME}-$(shell date -u +"%Y-%m-%d-%H-%M-%S").sql
+	docker exec ${DB_CONTAINER_NAME} /usr/bin/mariadb-dump -u root --password=${DB_ROOT_PASSWORD} ${DB_NAME} --compress --dump-date --verbose > ./backups/db/db-dump-${DB_NAME}-$(shell date -u +"%Y-%m-%d-%H-%M-%S").sql
 
 restore-db:
-	cat $(SQL_FILE) | pv | docker exec -i ${DB_CONTAINER_NAME}  /usr/bin/mysql -u root --password=${DB_ROOT_PASSWORD} ${DB_NAME}
+	cat $(SQL_FILE) | pv | docker exec -i ${DB_CONTAINER_NAME} /usr/bin/mariadb -u root --password=${DB_ROOT_PASSWORD} ${DB_NAME}
 
 run:
 	export GIT_COMMIT=$(shell git rev-list -1 HEAD) && /usr/local/go/bin/go run ./main/*.go

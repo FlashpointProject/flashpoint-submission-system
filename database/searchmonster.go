@@ -457,8 +457,6 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 
 	result := make([]*types.ExtendedSubmission, 0)
 
-	var uploadedAt int64
-	var updatedAt int64
 	var submitterAvatar string
 	var updaterAvatar string
 	var assignedTestingUserIDs *string
@@ -467,7 +465,7 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 	var approvedUserIDs *string
 	var verifiedUserIDs *string
 	var distinctActions *string
-	var frozenAt *int64
+	var frozenAt *time.Time
 
 	for rows.Next() {
 		s := &types.ExtendedSubmission{}
@@ -477,7 +475,7 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			&s.SubmitterID, &s.SubmitterUsername, &submitterAvatar,
 			&s.UpdaterID, &s.UpdaterUsername, &updaterAvatar,
 			&s.FileID, &s.OriginalFilename, &s.CurrentFilename, &s.Size,
-			&uploadedAt, &updatedAt, &s.LastUploaderID,
+			&s.UploadedAt, &s.UpdatedAt, &s.LastUploaderID,
 			&s.CurationTitle, &s.CurationAlternateTitles, &s.CurationPlatform, &s.CurationLaunchCommand, &s.CurationLibrary, &s.CurationExtreme,
 			&s.BotAction,
 			&s.FileCount,
@@ -487,8 +485,6 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		}
 		s.SubmitterAvatarURL = utils.FormatAvatarURL(s.SubmitterID, submitterAvatar)
 		s.UpdaterAvatarURL = utils.FormatAvatarURL(s.UpdaterID, updaterAvatar)
-		s.UploadedAt = time.Unix(uploadedAt, 0)
-		s.UpdatedAt = time.Unix(updatedAt, 0)
 		if frozenAt != nil {
 			s.IsFrozen = true
 		}

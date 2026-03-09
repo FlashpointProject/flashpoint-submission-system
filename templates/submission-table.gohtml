@@ -109,8 +109,8 @@
                             <div class="center-image dot-{{if .IsFrozen}}freeze{{else}}comment{{end}}"
                                  title="{{if .IsFrozen}}Frozen.{{else}}Not frozen.{{end}}"></div>
                         </td>
-                        <td>{{.UploadedAt.Format "2006-01-02 15:04:05 -0700"}}</td>
-                        <td>{{.UpdatedAt.Format "2006-01-02 15:04:05 -0700"}}</td>
+                        <td>{{.UploadedAt.Format "2006-01-02 15:04:05.000 -0700"}}</td>
+                        <td>{{.UpdatedAt.Format "2006-01-02 15:04:05.000 -0700"}}</td>
                         <td class="submission-table-original-filename">{{if not $isLegacy}}{{capString 100 .OriginalFilename}}{{end}}</td>
                     </tr>
                 {{end}}

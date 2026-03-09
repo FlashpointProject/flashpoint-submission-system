@@ -1,8 +1,6 @@
 package types
 
-import (
-	"time"
-)
+import "time"
 
 const (
 	DeviceFlowPending      = 0
@@ -89,10 +87,10 @@ type ClientApplication struct {
 }
 
 type SessionInfo struct {
-	ID        int64  `json:"id"`
-	UID       int64  `json:"uid"`
-	Scope     string `json:"scope"`
-	Client    string `json:"client"`
-	ExpiresAt int64  `json:"expires_at"`
-	IpAddr    string `json:"ip_addr"`
+	ID        int64     `json:"id"`
+	UID       int64     `json:"uid"`
+	Scope     string    `json:"scope"`
+	Client    string    `json:"client"`
+	ExpiresAt time.Time `json:"expires_at"`
+	IpAddr    string    `json:"ip_addr"`
 }

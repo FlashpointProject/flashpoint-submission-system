@@ -1,18 +1,19 @@
 # modified compose without validator, we're mocking everything except for databases
 
 networks:
-  fpfssnetwork:
+  fpfssnetwork-test:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.50.0.0/16
-          gateway: 10.50.0.1
+        - subnet: 10.51.0.0/16
+          gateway: 10.51.0.1
 
 services:
   database:
     container_name: ${DB_CONTAINER_NAME}
     restart: unless-stopped
-    image: mysql:8.0.25
+    image: mariadb:11.1.5
+    platform: linux/amd64
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
@@ -21,15 +22,16 @@ services:
     ports:
       - "${DB_PORT}:3306" # TODO unmap in prod
     volumes:
-      - fpfssdb_data:/var/lib/mysql
+      - fpfssdb_data_test:/var/lib/mysql
     networks:
-      fpfssnetwork:
-        ipv4_address: 10.50.0.2
-    command: mysqld --max_allowed_packet=256M --sql_mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION" --log_bin_trust_function_creators=1
+      fpfssnetwork-test:
+        ipv4_address: 10.51.0.2
+    command: mariadbd --max_allowed_packet=256M --sql_mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION" --log_bin_trust_function_creators=1
   postgres:
     container_name: ${POSTGRES_CONTAINER_NAME}
     restart: unless-stopped
     image: postgres:15
+    platform: linux/amd64
     deploy:
       resources:
         limits:
@@ -38,7 +40,7 @@ services:
         reservations:
           memory: 512m
     volumes:
-      - fpfss_postgres_data:/var/lib/postgresql/data
+      - fpfss_postgres_data_test:/var/lib/postgresql/data
       - ./backups/pgdb:/var/lib/postgresql/backups
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -46,8 +48,8 @@ services:
     ports:
       - "${POSTGRES_PORT}:5432"
     networks:
-      fpfssnetwork:
-        ipv4_address: 10.50.0.3
+      fpfssnetwork-test:
+        ipv4_address: 10.51.0.3
 #  validator:
 #    container_name: ${VALIDATOR_CONTAINER_NAME}
 #    restart: unless-stopped
@@ -63,9 +65,9 @@ services:
 #    ports:
 #      - "${VALIDATOR_PORT}:8000"
 #    networks:
-#      fpfssnetwork:
+#      fpfssnetwork-test:
 #        ipv4_address: 10.50.0.4
 
 volumes:
-  fpfssdb_data:
-  fpfss_postgres_data:
+  fpfssdb_data_test:
+  fpfss_postgres_data_test:

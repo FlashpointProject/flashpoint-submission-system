@@ -1480,7 +1480,7 @@ func (s *SiteService) OverrideBot(ctx context.Context, sid int64) error {
 		SubmissionID: sid,
 		Message:      &msg,
 		Action:       constants.ActionApprove,
-		CreatedAt:    s.clock.Now(),
+		CreatedAt:    s.clock.Now().UTC(),
 	}
 
 	cid, err := s.dal.StoreComment(dbs, c)
@@ -2312,7 +2312,7 @@ func (s *SiteService) ForceApproveSubmission(ctx context.Context, sid int64) err
 		SubmissionID: sid,
 		Message:      &msg,
 		Action:       constants.ActionApprove,
-		CreatedAt:    s.clock.Now(),
+		CreatedAt:    s.clock.Now().UTC(),
 	}
 
 	cid, err := s.dal.StoreComment(dbs, c)
@@ -2377,7 +2377,7 @@ func (s *SiteService) ForceVerifySubmission(ctx context.Context, sid int64) erro
 		SubmissionID: sid,
 		Message:      &msg,
 		Action:       constants.ActionVerify,
-		CreatedAt:    s.clock.Now(),
+		CreatedAt:    s.clock.Now().UTC(),
 	}
 
 	cid, err := s.dal.StoreComment(dbs, c)

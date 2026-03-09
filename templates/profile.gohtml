@@ -194,6 +194,7 @@
                 const sessionsDiv = document.querySelector(".sessions");
                 sessionsDiv.innerHTML = "";
                 for (const session of sessions) {
+                    const expiresAt = new Date(session.expires_at);
                     const sessionDiv = document.createElement("div")
                     sessionDiv.classList.add("session");
                     sessionDiv.innerHTML = `
@@ -212,7 +213,7 @@
                             </tr>
                             <tr>
                                 <td class="session-field-name">Expires at</th>
-                                <td>${(new Date(session.expires_at * 1000)).toUTCString()}</td>
+                                <td>${expiresAt.toUTCString()}</td>
                             </tr>
                             <tr>
                                 <td>

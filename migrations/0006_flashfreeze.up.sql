@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS flashfreeze_file
     indexed_at        BIGINT       DEFAULT NULL,
     deleted_at        BIGINT       DEFAULT NULL,
     deleted_reason    VARCHAR(255) DEFAULT NULL,
-    FULLTEXT (original_filename) WITH PARSER NGRAM,
+    FULLTEXT (original_filename),
     FOREIGN KEY (fk_user_id) REFERENCES discord_user (id)
 );
 CREATE INDEX idx_flashfreeze_file_created_at ON flashfreeze_file (created_at);
