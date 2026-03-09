@@ -320,8 +320,10 @@ var DiscordServerRoles = []types.DiscordRole{
 }
 
 type validatorMockOptions struct {
-	CurationErrors   []string
-	CurationWarnings []string
+	CurationErrors      []string
+	CurationWarnings    []string
+	CurationErrorsSeq   [][]string
+	CurationWarningsSeq [][]string
 }
 
 func setupTestEnvironment(t *testing.T) {
@@ -795,6 +797,8 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 		validatorOptions = &validatorMockOptions{}
 	}
 
+	var validatorResponseCounter atomic.Int64
+
 	// Mock Validator
 	validatorMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		l.Infof("Mock Request: %s %s", r.Method, r.URL.String())
@@ -836,6 +840,25 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 		}
 
 		l.Infof("Mock: Handling default")
+
+		responseIndex := int(validatorResponseCounter.Add(1) - 1)
+		curationErrors := append([]string(nil), validatorOptions.CurationErrors...)
+		curationWarnings := append([]string(nil), validatorOptions.CurationWarnings...)
+		if len(validatorOptions.CurationErrorsSeq) > 0 {
+			seqIndex := responseIndex
+			if seqIndex >= len(validatorOptions.CurationErrorsSeq) {
+				seqIndex = len(validatorOptions.CurationErrorsSeq) - 1
+			}
+			curationErrors = append([]string(nil), validatorOptions.CurationErrorsSeq[seqIndex]...)
+		}
+		if len(validatorOptions.CurationWarningsSeq) > 0 {
+			seqIndex := responseIndex
+			if seqIndex >= len(validatorOptions.CurationWarningsSeq) {
+				seqIndex = len(validatorOptions.CurationWarningsSeq) - 1
+			}
+			curationWarnings = append([]string(nil), validatorOptions.CurationWarningsSeq[seqIndex]...)
+		}
+
 		// Respond with a valid ValidatorResponse
 		resp := types.ValidatorResponse{
 			Path: path,
@@ -848,8 +871,8 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 				Platform:        utils.StrPtr("a"),
 				// TODO also fill the rest of metadata
 			},
-			CurationErrors:   append([]string(nil), validatorOptions.CurationErrors...),
-			CurationWarnings: append([]string(nil), validatorOptions.CurationWarnings...),
+			CurationErrors:   curationErrors,
+			CurationWarnings: curationWarnings,
 			Images: []types.ValidatorResponseImage{
 				{Type: "logo", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
 				{Type: "screenshot", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
