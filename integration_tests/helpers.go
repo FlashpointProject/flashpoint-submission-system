@@ -367,17 +367,172 @@ func runCommand(name string, args ...string) error {
 	return cmd.Run()
 }
 
-func recreateTestDatabases(t *testing.T) {
-	fmt.Println("setting up databases...")
+func openMariaTestDB(conf *config.Config) (*sql.DB, error) {
+	return sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC&time_zone=%%27%%2B00%%3A00%%27", conf.DBUser, conf.DBPassword, conf.DBIP, conf.DBPort, conf.DBName))
+}
 
-	// Start DBs
-	fmt.Println("rebuilding...")
-	err := runCommand("make", "rebuild-db")
-	require.NoError(t, err, "failed to rebuild mysql")
+func openPostgresTestDB(ctx context.Context, conf *config.Config) (*pgxpool.Pool, error) {
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", conf.PostgresUser, conf.PostgresPassword, conf.PostgresHost, conf.PostgresPort, conf.PostgresUser)
+	return pgxpool.New(ctx, connStr)
+}
 
-	// Wait for DBs to be ready
+func quoteMySQLIdentifier(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
+func quotePostgresIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+var preservedMySQLTables = map[string]struct{}{
+	"action":                       {},
+	"curation_image_type":          {},
+	"schema_migrations":            {},
+	"submission_level":             {},
+	"submission_notification_type": {},
+}
+
+var mysqlTableCleanupQueries = map[string]string{
+	"discord_user": fmt.Sprintf(
+		"DELETE FROM discord_user WHERE id NOT IN (%d, %d)",
+		constants.ValidatorID,
+		constants.SystemID,
+	),
+}
+
+func clearExistingMariaTestDB(conf *config.Config) error {
+	db, err := openMariaTestDB(conf)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return err
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT TABLE_NAME
+		FROM INFORMATION_SCHEMA.TABLES
+		WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_TYPE = 'BASE TABLE'
+		ORDER BY TABLE_NAME`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	tables := make([]string, 0)
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return err
+		}
+		tables = append(tables, table)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(tables) == 0 {
+		return fmt.Errorf("mysql database has no reusable tables")
+	}
+
+	if _, err := db.ExecContext(ctx, `SET FOREIGN_KEY_CHECKS = 0`); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = db.ExecContext(context.Background(), `SET FOREIGN_KEY_CHECKS = 1`)
+	}()
+
+	for _, table := range tables {
+		if cleanupQuery, ok := mysqlTableCleanupQueries[table]; ok {
+			if _, err := db.ExecContext(ctx, cleanupQuery); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, ok := preservedMySQLTables[table]; ok {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("TRUNCATE TABLE %s", quoteMySQLIdentifier(table))); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func clearExistingPostgresTestDB(conf *config.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pool, err := openPostgresTestDB(ctx, conf)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		return err
+	}
+
+	rows, err := pool.Query(ctx, `
+		SELECT table_name
+		FROM information_schema.tables
+		WHERE table_schema = 'public'
+			AND table_type = 'BASE TABLE'
+			AND table_name <> 'schema_migrations'
+		ORDER BY table_name`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	tables := make([]string, 0)
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return err
+		}
+		tables = append(tables, table)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	if len(tables) == 0 {
+		return fmt.Errorf("postgres database has no reusable tables")
+	}
+
+	qualifiedTables := make([]string, 0, len(tables))
+	for _, table := range tables {
+		qualifiedTables = append(qualifiedTables, quotePostgresIdentifier("public")+"."+quotePostgresIdentifier(table))
+	}
+
+	_, err = pool.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", strings.Join(qualifiedTables, ", ")))
+	return err
+}
+
+func reuseExistingTestDatabases(conf *config.Config) error {
+	if err := clearExistingMariaTestDB(conf); err != nil {
+		return err
+	}
+	if err := clearExistingPostgresTestDB(conf); err != nil {
+		return err
+	}
+	return nil
+}
+
+func waitForTestDatabases(t *testing.T, conf *config.Config) {
+	t.Helper()
+
 	fmt.Println("waiting for databases to come online")
-	conf := config.GetConfig(nil)
 	timeout := time.After(60 * time.Second)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -391,34 +546,54 @@ func recreateTestDatabases(t *testing.T) {
 			require.Fail(t, "timed out waiting for databases to be ready")
 		case <-ticker.C:
 			if !mysqlReady {
-				db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC&time_zone=%%27%%2B00%%3A00%%27", conf.DBUser, conf.DBPassword, conf.DBIP, conf.DBPort, conf.DBName))
+				db, err := openMariaTestDB(conf)
 				if err == nil {
-					if err := db.Ping(); err == nil {
+					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					if err := db.PingContext(ctx); err == nil {
 						mysqlReady = true
 						fmt.Println("mysql ready")
 					}
+					cancel()
 					db.Close()
 				}
 			}
 			if !postgresReady {
-				// postgres://user:password@host:port/dbname?sslmode=disable
-				// In postgresdal.go, dbname is set to user.
-				connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", conf.PostgresUser, conf.PostgresPassword, conf.PostgresHost, conf.PostgresPort, conf.PostgresUser)
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				pool, err := pgxpool.New(ctx, connStr)
-				cancel()
+				pool, err := openPostgresTestDB(ctx, conf)
 				if err == nil {
-					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 					if err := pool.Ping(ctx); err == nil {
 						postgresReady = true
 						fmt.Println("postgres ready")
 					}
-					cancel()
 					pool.Close()
 				}
+				cancel()
 			}
 		}
 	}
+}
+
+func recreateTestDatabases(t *testing.T) {
+	t.Helper()
+
+	fmt.Println("setting up databases...")
+	conf := config.GetConfig(nil)
+
+	if err := reuseExistingTestDatabases(conf); err == nil {
+		fmt.Println("reusing existing databases without running migrations")
+		fmt.Println("databases OK")
+		return
+	} else {
+		fmt.Printf("existing databases unavailable, rebuilding from scratch: %v\n", err)
+	}
+
+	// Start DBs
+	fmt.Println("rebuilding...")
+	err := runCommand("make", "rebuild-db")
+	require.NoError(t, err, "failed to rebuild mysql")
+
+	// Wait for DBs to be ready
+	waitForTestDatabases(t, conf)
 
 	// Run migrations
 	fmt.Println("running migrations")
