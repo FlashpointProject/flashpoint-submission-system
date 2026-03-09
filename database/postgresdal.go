@@ -102,7 +102,7 @@ func (dbs *PostgresSession) Commit() error {
 
 func (dbs *PostgresSession) Rollback() error {
 	err := dbs.Tx().Rollback(dbs.context)
-	if err != nil && err.Error() == "sql: transaction has already been committed or rolled back" {
+	if errors.Is(err, pgx.ErrTxClosed) {
 		err = nil
 	}
 	if err != nil {

@@ -349,6 +349,8 @@ func setupTestEnvironment(t *testing.T) {
 	for _, d := range dirs {
 		err := os.MkdirAll(d, 0777)
 		require.NoError(t, err)
+		err = os.Chmod(d, 0o755)
+		require.NoError(t, err)
 	}
 
 	// Create symlinks for templates

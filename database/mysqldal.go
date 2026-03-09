@@ -71,7 +71,7 @@ func (dbs *MysqlSession) Commit() error {
 
 func (dbs *MysqlSession) Rollback() error {
 	err := dbs.Tx().Rollback()
-	if err != nil && err.Error() == "sql: transaction has already been committed or rolled back" {
+	if err == sql.ErrTxDone {
 		err = nil
 	}
 	if err != nil {
