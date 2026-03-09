@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/database"
 	"github.com/FlashpointProject/flashpoint-submission-system/service"
@@ -12,10 +17,6 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
 )
 
 type extendedTestUser struct {
