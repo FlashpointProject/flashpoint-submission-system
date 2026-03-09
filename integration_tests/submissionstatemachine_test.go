@@ -236,7 +236,6 @@ func TestSubmissionStateMachine_BotOverride(t *testing.T) {
 	})
 }
 
-// TODO add test with fix uploads
 // TODO add test with real validator and metadata edit
 // TODO add test with access to submission version downloads
 // TODO tests for search
