@@ -16,7 +16,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 type extendedTestUser struct {
@@ -85,13 +84,59 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 // TODO add test with real validator and metadata edit
 // TODO add test with access to submission version downloads
 // TODO submission delete permissions
-// TODO subscribe/unsubscribe button
 // TODO tests for search
+
+// advanceToState creates a fresh submission and advances it to the given state.
+// Returns the submission ID.
+func advanceToState(t *testing.T, l *logrus.Entry, app *transport.App,
+	state string, submitterCookie, testerCookie, verifierCookie *http.Cookie) int64 {
+
+	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitterCookie, nil)
+
+	if state == "uploaded" {
+		return sid
+	}
+
+	// Tester assigns for testing
+	rr := addComment(t, l, app, testerCookie, sid, constants.ActionAssignTesting, "assign testing")
+	require.Equal(t, http.StatusOK, rr.Code, "advance: assign-testing failed: "+rr.Body.String())
+
+	if state == "assigned-testing" {
+		return sid
+	}
+
+	// Tester approves (auto-unassigns)
+	rr = addComment(t, l, app, testerCookie, sid, constants.ActionApprove, "approve")
+	require.Equal(t, http.StatusOK, rr.Code, "advance: approve failed: "+rr.Body.String())
+
+	if state == "approved" {
+		return sid
+	}
+
+	// Verifier assigns for verification
+	rr = addComment(t, l, app, verifierCookie, sid, constants.ActionAssignVerification, "assign verification")
+	require.Equal(t, http.StatusOK, rr.Code, "advance: assign-verification failed: "+rr.Body.String())
+
+	if state == "assigned-verification" {
+		return sid
+	}
+
+	// Verifier verifies (auto-unassigns)
+	rr = addComment(t, l, app, verifierCookie, sid, constants.ActionVerify, "verify")
+	require.Equal(t, http.StatusOK, rr.Code, "advance: verify failed: "+rr.Body.String())
+
+	if state == "verified" {
+		return sid
+	}
+
+	t.Fatalf("unknown state: %s", state)
+	return 0
+}
 
 // TestSubmissionStateMachine_MainFlow performs upload,bot approve,assign,approve,(unassign),assign,verify,(unassign),mark added.
 // Verifies that the users involved see only the buttons they should in the UI.
 // Verifies that the users involved cannot perform actions that they shouldn't be able to.
-// TODO does not verify that the users can perform all of the actions that they should be able to, implement later.
+// Allowed actions are tested separately in TestSubmissionStateMachine_AllowedActions.
 func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
@@ -179,11 +224,6 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 	}
 
 	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
-
-	// Wait for bot processing to complete and for MySQL timestamps to advance past the file creation time.
-	// The cache query uses strict > comparison on DATETIME (second precision), so comments created in the
-	// same second as the file won't be counted as post-upload actions.
-	time.Sleep(2 * time.Second)
 
 	// 1. Upload
 	t.Run("Check after uploaded", func(t *testing.T) {
@@ -685,4 +725,125 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 		}
 		assertActionCounters(t, submission, expectedCounters)
 	})
+}
+
+// TestSubmissionStateMachine_AllowedActions verifies that staff users can perform
+// all actions that they should be able to at each submission state.
+// Creates a fresh submission per (state, user, action) to avoid state corruption.
+func TestSubmissionStateMachine_AllowedActions(t *testing.T) {
+	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
+	defer maria.Close()
+	defer postgres.Close()
+
+	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
+	_ = ctx
+
+	// Role IDs
+	const (
+		roleCurator   = 442665038642413569
+		roleTester    = 442988314480476170
+		roleModerator = 442462642599231499
+	)
+
+	// Create users
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000101), []int64{roleCurator}, "submitter/curator")
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000102), []int64{roleTester}, "tester")
+	verifier := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000103), []int64{roleTester}, "verifier")
+	adder := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000104), []int64{roleModerator}, "adder")
+
+	type allowedAction struct {
+		user   *extendedTestUser
+		action string
+	}
+
+	type stateTest struct {
+		state   string
+		allowed []allowedAction
+	}
+
+	tests := []stateTest{
+		{
+			state: "uploaded",
+			allowed: []allowedAction{
+				{tester, constants.ActionAssignTesting},
+				{tester, constants.ActionReject},
+				{verifier, constants.ActionAssignTesting},
+				{verifier, constants.ActionReject},
+				{adder, constants.ActionAssignTesting},
+				{adder, constants.ActionReject},
+				{submitter, constants.ActionReject},
+			},
+		},
+		{
+			state: "assigned-testing",
+			allowed: []allowedAction{
+				{tester, constants.ActionUnassignTesting},
+				{tester, constants.ActionApprove},
+				{tester, constants.ActionRequestChanges},
+				{tester, constants.ActionReject},
+				{verifier, constants.ActionAssignTesting},
+				{verifier, constants.ActionReject},
+				{adder, constants.ActionAssignTesting},
+				{adder, constants.ActionReject},
+				{submitter, constants.ActionReject},
+			},
+		},
+		{
+			state: "approved",
+			allowed: []allowedAction{
+				{tester, constants.ActionRequestChanges},
+				{tester, constants.ActionReject},
+				{verifier, constants.ActionAssignTesting},
+				{verifier, constants.ActionAssignVerification},
+				{verifier, constants.ActionReject},
+				{adder, constants.ActionAssignTesting},
+				{adder, constants.ActionAssignVerification},
+				{adder, constants.ActionReject},
+				{submitter, constants.ActionReject},
+			},
+		},
+		{
+			state: "assigned-verification",
+			allowed: []allowedAction{
+				{tester, constants.ActionRequestChanges},
+				{tester, constants.ActionReject},
+				{verifier, constants.ActionUnassignVerification},
+				{verifier, constants.ActionRequestChanges},
+				{verifier, constants.ActionVerify},
+				{verifier, constants.ActionReject},
+				{adder, constants.ActionAssignTesting},
+				{adder, constants.ActionReject},
+				{submitter, constants.ActionReject},
+			},
+		},
+		{
+			state: "verified",
+			allowed: []allowedAction{
+				{tester, constants.ActionRequestChanges},
+				{tester, constants.ActionReject},
+				{verifier, constants.ActionRequestChanges},
+				{verifier, constants.ActionReject},
+				{adder, constants.ActionAssignTesting},
+				{adder, constants.ActionAssignVerification},
+				{adder, constants.ActionMarkAdded},
+				{adder, constants.ActionReject},
+				{submitter, constants.ActionReject},
+			},
+		},
+	}
+
+	for _, st := range tests {
+		t.Run("State_"+st.state, func(t *testing.T) {
+			for _, aa := range st.allowed {
+				t.Run(fmt.Sprintf("%s_%s", aa.user.Name, aa.action), func(t *testing.T) {
+					sid := advanceToState(t, l, app, st.state, submitter.Cookie, tester.Cookie, verifier.Cookie)
+					rr := addComment(t, l, app, aa.user.Cookie, sid, aa.action,
+						fmt.Sprintf("allowed action test: user=%s action=%s state=%s", aa.user.Name, aa.action, st.state))
+					require.Equal(t, http.StatusOK, rr.Code,
+						fmt.Sprintf("action %s should succeed for %s in state %s but got %d: %s",
+							aa.action, aa.user.Name, st.state, rr.Code, rr.Body.String()))
+				})
+			}
+		})
+	}
 }
