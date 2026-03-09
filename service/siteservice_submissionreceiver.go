@@ -399,11 +399,11 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 
 	utils.LogCtx(ctx).Debugf("received a file '%s' - %d bytes", filename, filesize)
 
-	if err := os.MkdirAll(s.submissionsDir, os.ModeDir); err != nil {
+	if err := os.MkdirAll(s.submissionsDir, 0o755); err != nil {
 		s.SSK.SetFailed(tempName, "internal error")
 		return nil, nil, 0, err
 	}
-	if err := os.MkdirAll(s.submissionImagesDir, os.ModeDir); err != nil {
+	if err := os.MkdirAll(s.submissionImagesDir, 0o755); err != nil {
 		s.SSK.SetFailed(tempName, "internal error")
 		return nil, nil, 0, err
 	}

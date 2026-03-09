@@ -23,7 +23,7 @@ func (rsu *ResumableUploadService) getChunkFilename(uid int64, fileID string, ch
 }
 
 func New(path string) (*ResumableUploadService, error) {
-	err := os.MkdirAll(path, os.ModeDir)
+	err := os.MkdirAll(path, 0o755)
 	if err != nil {
 		return nil, err
 	}
