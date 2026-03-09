@@ -319,6 +319,11 @@ var DiscordServerRoles = []types.DiscordRole{
 	},
 }
 
+type validatorMockOptions struct {
+	CurationErrors   []string
+	CurationWarnings []string
+}
+
 func setupTestEnvironment(t *testing.T) {
 	// replace relative paths with absolute paths in env
 	cwd, err := os.Getwd()
@@ -604,8 +609,16 @@ func uploadTestSubmission(t *testing.T, l *logrus.Entry, app *transport.App, fil
 }
 
 func initTestApp(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.DB, postgres *pgxpool.Pool) *transport.App {
+	return initTestAppWithValidatorMockOptions(t, l, conf, maria, postgres, nil)
+}
+
+func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.DB, postgres *pgxpool.Pool, validatorOptions *validatorMockOptions) *transport.App {
 	authBotMock := &MockDiscordRoleReader{}
 	notifBotMock := &MockDiscordNotificationSender{}
+
+	if validatorOptions == nil {
+		validatorOptions = &validatorMockOptions{}
+	}
 
 	// Mock Validator
 	validatorMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -660,8 +673,8 @@ func initTestApp(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.
 				Platform:        utils.StrPtr("a"),
 				// TODO also fill the rest of metadata
 			},
-			CurationErrors:   []string{},
-			CurationWarnings: []string{},
+			CurationErrors:   append([]string(nil), validatorOptions.CurationErrors...),
+			CurationWarnings: append([]string(nil), validatorOptions.CurationWarnings...),
 			Images: []types.ValidatorResponseImage{
 				{Type: "logo", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
 				{Type: "screenshot", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
@@ -710,6 +723,10 @@ func verifyTestSubmissionExists(t *testing.T, ctx context.Context, l *logrus.Ent
 }
 
 func setupIntegrationTest(t *testing.T) (*transport.App, *logrus.Entry, context.Context, database.DAL, database.PGDAL, *sql.DB, *pgxpool.Pool) {
+	return setupIntegrationTestWithValidatorMockOptions(t, nil)
+}
+
+func setupIntegrationTestWithValidatorMockOptions(t *testing.T, validatorOptions *validatorMockOptions) (*transport.App, *logrus.Entry, context.Context, database.DAL, database.PGDAL, *sql.DB, *pgxpool.Pool) {
 	ctx := context.Background()
 
 	fmt.Println("setting up environment...")
@@ -728,7 +745,7 @@ func setupIntegrationTest(t *testing.T) (*transport.App, *logrus.Entry, context.
 	db := database.NewMysqlDAL(maria)
 	pgdb := database.NewPostgresDAL(postgres)
 
-	app := initTestApp(t, l, conf, maria, postgres)
+	app := initTestAppWithValidatorMockOptions(t, l, conf, maria, postgres, validatorOptions)
 
 	return app, l, ctx, db, pgdb, maria, postgres
 }

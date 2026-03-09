@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/database"
+	"github.com/FlashpointProject/flashpoint-submission-system/logging"
 	"github.com/FlashpointProject/flashpoint-submission-system/service"
 	"github.com/FlashpointProject/flashpoint-submission-system/transport"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
@@ -78,11 +79,167 @@ func assertActionCounters(t *testing.T, submission *types.ExtendedSubmission, co
 	}
 }
 
-// TODO add test for bot override
+func searchSubmissionByID(t *testing.T, ctx context.Context, app *transport.App, sid int64) *types.ExtendedSubmission {
+	submissions, _, err := app.Service.SearchSubmissions(ctx, &types.SubmissionsFilter{SubmissionIDs: []int64{sid}})
+	require.NoError(t, err)
+	require.Len(t, submissions, 1)
+	return submissions[0]
+}
+
+func renderSubmissionBody(t *testing.T, ctx context.Context, l *logrus.Entry, app *transport.App, user *extendedTestUser, sid int64) string {
+	rctx := addContextValues(ctx, l, user.ID, fmt.Sprintf("req_RenderSubmission_u%d_s%d", user.ID, sid))
+	viewData, err := app.Service.GetViewSubmissionPageData(rctx, user.ID, sid)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	app.RenderTemplates(rctx, recorder, nil, viewData,
+		"templates/submission.gohtml",
+		"templates/submission-table.gohtml",
+		"templates/comment-form.gohtml",
+		"templates/view-submission-nav.gohtml")
+
+	return recorder.Body.String()
+}
+
+func overrideBot(t *testing.T, l *logrus.Entry, app *transport.App, cookie *http.Cookie, sid int64) *httptest.ResponseRecorder {
+	req, err := http.NewRequest("POST", fmt.Sprintf("/api/submission/%d/override", sid), nil)
+	require.NoError(t, err)
+	req.AddCookie(cookie)
+
+	rr := httptest.NewRecorder()
+	logging.LogRequestHandler(l, app.Mux).ServeHTTP(rr, req)
+	return rr
+}
+
+func TestSubmissionStateMachine_BotOverride(t *testing.T) {
+	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTestWithValidatorMockOptions(t, &validatorMockOptions{
+		CurationWarnings: []string{"Validator requested a manual review", "Validator requested a second manual review"},
+	})
+	defer maria.Close()
+	defer postgres.Close()
+
+	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
+
+	const (
+		roleCurator      = 442665038642413569
+		roleTester       = 442988314480476170
+		roleModerator    = 442462642599231499
+		roleTrialCurator = 569328799318016018
+	)
+
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000301), []int64{roleCurator}, "submitter/curator")
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000302), []int64{roleTester}, "tester")
+	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000303), []int64{roleModerator}, "moderator")
+	secondModerator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000304), []int64{roleModerator}, "second-moderator")
+	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000305), []int64{roleTrialCurator}, "trial-curator")
+
+	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+
+	t.Run("BeforeOverride", func(t *testing.T) {
+		submission := searchSubmissionByID(t, ctx, app, sid)
+		require.Equal(t, constants.ActionRequestChanges, submission.BotAction)
+		assertDistinctActions(t, submission, []string{constants.ActionUpload, constants.ActionRequestChanges})
+		assertActionCounters(t, submission, &actionCounters{
+			AssignedTestingUserIDs:      []int64{},
+			RequestedChangesUserIDs:     []int64{},
+			ApprovedUserIDs:             []int64{},
+			AssignedVerificationUserIDs: []int64{},
+			VerifiedUserIDs:             []int64{},
+		})
+
+		staffBody := renderSubmissionBody(t, ctx, l, app, moderator, sid)
+		require.Contains(t, staffBody, "button-override")
+
+		trialBody := renderSubmissionBody(t, ctx, l, app, trialCurator, sid)
+		require.NotContains(t, trialBody, "button-override")
+
+		viewData, err := app.Service.GetViewSubmissionPageData(ctx, moderator.ID, sid)
+		require.NoError(t, err)
+		require.NotEmpty(t, viewData.Comments)
+		lastComment := viewData.Comments[len(viewData.Comments)-1]
+		require.EqualValues(t, constants.ValidatorID, lastComment.AuthorID)
+		require.Equal(t, constants.ActionRequestChanges, lastComment.Action)
+		require.NotNil(t, lastComment.Message)
+		require.Contains(t, *lastComment.Message, "Validator requested a manual review")
+	})
+
+	t.Run("Authorization", func(t *testing.T) {
+		rr := overrideBot(t, l, app, trialCurator.Cookie, sid)
+		require.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
+
+		rr = overrideBot(t, l, app, moderator.Cookie, sid)
+		require.Equal(t, http.StatusNoContent, rr.Code, rr.Body.String())
+	})
+
+	t.Run("AfterOverride", func(t *testing.T) {
+		submission := searchSubmissionByID(t, ctx, app, sid)
+		require.Equal(t, constants.ActionApprove, submission.BotAction)
+		assertDistinctActions(t, submission, []string{constants.ActionUpload, constants.ActionRequestChanges, constants.ActionApprove})
+		assertActionCounters(t, submission, &actionCounters{
+			AssignedTestingUserIDs:      []int64{},
+			RequestedChangesUserIDs:     []int64{},
+			ApprovedUserIDs:             []int64{},
+			AssignedVerificationUserIDs: []int64{},
+			VerifiedUserIDs:             []int64{},
+		})
+
+		approveResults, _, err := app.Service.SearchSubmissions(ctx, &types.SubmissionsFilter{
+			SubmissionIDs: []int64{sid},
+			BotActions:    []string{constants.ActionApprove},
+		})
+		require.NoError(t, err)
+		require.Len(t, approveResults, 1)
+
+		requestChangesResults, _, err := app.Service.SearchSubmissions(ctx, &types.SubmissionsFilter{
+			SubmissionIDs: []int64{sid},
+			BotActions:    []string{constants.ActionRequestChanges},
+		})
+		require.NoError(t, err)
+		require.Len(t, requestChangesResults, 0)
+
+		viewData, err := app.Service.GetViewSubmissionPageData(ctx, moderator.ID, sid)
+		require.NoError(t, err)
+		require.NotEmpty(t, viewData.Comments)
+		lastComment := viewData.Comments[len(viewData.Comments)-1]
+		require.EqualValues(t, constants.ValidatorID, lastComment.AuthorID)
+		require.Equal(t, constants.ActionApprove, lastComment.Action)
+		require.NotNil(t, lastComment.Message)
+		require.Contains(t, *lastComment.Message, fmt.Sprintf("Approval override by user user_%d (%d)", moderator.ID, moderator.ID))
+
+		rr := addComment(t, l, app, tester.Cookie, sid, constants.ActionAssignVerification, "assign verification after bot override")
+		require.NotEqual(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), "not approved")
+	})
+
+	t.Run("RepeatedOverride", func(t *testing.T) {
+		rr := overrideBot(t, l, app, secondModerator.Cookie, sid)
+		require.Equal(t, http.StatusNoContent, rr.Code, rr.Body.String())
+
+		submission := searchSubmissionByID(t, ctx, app, sid)
+		require.Equal(t, constants.ActionApprove, submission.BotAction)
+		assertActionCounters(t, submission, &actionCounters{
+			AssignedTestingUserIDs:      []int64{},
+			RequestedChangesUserIDs:     []int64{},
+			ApprovedUserIDs:             []int64{},
+			AssignedVerificationUserIDs: []int64{},
+			VerifiedUserIDs:             []int64{},
+		})
+
+		viewData, err := app.Service.GetViewSubmissionPageData(ctx, secondModerator.ID, sid)
+		require.NoError(t, err)
+		require.NotEmpty(t, viewData.Comments)
+		lastComment := viewData.Comments[len(viewData.Comments)-1]
+		require.Equal(t, constants.ActionApprove, lastComment.Action)
+		require.NotNil(t, lastComment.Message)
+		require.Contains(t, *lastComment.Message, fmt.Sprintf("Approval override by user user_%d (%d)", secondModerator.ID, secondModerator.ID))
+	})
+}
+
 // TODO add test with fix uploads
 // TODO add test with real validator and metadata edit
 // TODO add test with access to submission version downloads
 // TODO tests for search
+// TODO test that validator propagates metadata to fpfss correctly, and that they are displayed on the frontend correctly
 
 // advanceToState creates a fresh submission and advances it to the given state.
 // Returns the submission ID.
