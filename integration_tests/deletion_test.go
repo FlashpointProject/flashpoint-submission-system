@@ -97,6 +97,30 @@ func TestSubmissionDeletion(t *testing.T) {
 		require.Empty(t, subs, "deleted submission should not appear in search results")
 	})
 
+	t.Run("DeletedSubmissionFilesBecomeInaccessible", func(t *testing.T) {
+		sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+		uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, &sid)
+
+		files := getSubmissionFilesBySubmissionID(t, ctx, db, sid)
+		require.Len(t, files, 2)
+
+		fileIDs := make([]int64, 0, len(files))
+		for _, file := range files {
+			fileIDs = append(fileIDs, file.FileID)
+		}
+
+		rr := softDeleteSubmission(t, l, app, moderator.Cookie, sid, "delete submission and its files")
+		require.Equal(t, http.StatusNoContent, rr.Code, rr.Body.String())
+
+		for _, file := range files {
+			rr = downloadSubmissionFile(t, l, app, moderator.Cookie, sid, file.FileID)
+			require.NotEqual(t, http.StatusOK, rr.Code, "deleted submission file %d should not be downloadable", file.FileID)
+		}
+
+		rr = downloadSubmissionBatch(t, l, app, moderator.Cookie, fileIDs)
+		require.NotEqual(t, http.StatusOK, rr.Code, "deleted submission batch should not be downloadable")
+	})
+
 	t.Run("ModeratorCanDeleteComment", func(t *testing.T) {
 		sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 

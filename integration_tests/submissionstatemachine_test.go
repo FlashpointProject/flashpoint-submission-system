@@ -236,8 +236,8 @@ func TestSubmissionStateMachine_BotOverride(t *testing.T) {
 	})
 }
 
-// TODO add test with real validator and metadata edit
-// TODO add test with access to submission version downloads
+// TODO tests after mark added? to cover postgres as well
+// TODO add test for metadata edit ^ ?
 // TODO tests for search
 // TODO test that validator propagates metadata to fpfss correctly, and that they are displayed on the frontend correctly
 
