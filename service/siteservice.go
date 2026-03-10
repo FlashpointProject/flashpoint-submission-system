@@ -1266,6 +1266,44 @@ func (s *SiteService) GetSubmissionFiles(ctx context.Context, sfids []int64) ([]
 	return sfs, nil
 }
 
+func (s *SiteService) GetSubmissionFile(ctx context.Context, sfid int64) (*types.SubmissionFile, bool, error) {
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, false, dberr(err)
+	}
+	defer dbs.Rollback()
+
+	sfs, err := s.dal.GetSubmissionFiles(dbs, []int64{sfid})
+	if err != nil {
+		if strings.Contains(err.Error(), "files were not found") {
+			return nil, false, nil
+		}
+		utils.LogCtx(ctx).Error(err)
+		return nil, false, dberr(err)
+	}
+	return sfs[0], true, nil
+}
+
+func (s *SiteService) GetComment(ctx context.Context, cid int64) (*types.Comment, bool, error) {
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, false, dberr(err)
+	}
+	defer dbs.Rollback()
+
+	comment, err := s.dal.GetCommentByID(dbs, cid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		utils.LogCtx(ctx).Error(err)
+		return nil, false, dberr(err)
+	}
+	return comment, true, nil
+}
+
 func (s *SiteService) GetSessionAuthInfo(ctx context.Context, key string) (*types.SessionInfo, bool, error) {
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
@@ -1890,6 +1928,25 @@ func (s *SiteService) GetCurationImage(ctx context.Context, ciid int64) (*types.
 		return nil, dberr(err)
 	}
 	return ci, nil
+}
+
+func (s *SiteService) LookupCurationImage(ctx context.Context, ciid int64) (*types.CurationImage, bool, error) {
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, false, dberr(err)
+	}
+	defer dbs.Rollback()
+
+	ci, err := s.dal.GetCurationImage(dbs, ciid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		utils.LogCtx(ctx).Error(err)
+		return nil, false, dberr(err)
+	}
+	return ci, true, nil
 }
 
 func (s *SiteService) GetNextSubmission(ctx context.Context, sid int64) (*int64, error) {

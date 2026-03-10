@@ -200,7 +200,7 @@ func TestSubmissionFileAccess(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
 	})
 
-	t.Run("MismatchedSubmissionIDIsRejected", func(t *testing.T) {
+	t.Run("MismatchedSubmissionIDIsUnauthorized", func(t *testing.T) {
 		frozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 		frozenFiles := getSubmissionFilesBySubmissionID(t, ctx, db, frozenSID)
 		require.Len(t, frozenFiles, 1)
@@ -211,6 +211,6 @@ func TestSubmissionFileAccess(t *testing.T) {
 		unfrozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 
 		rr = downloadSubmissionFile(t, l, app, curator.Cookie, unfrozenSID, frozenFiles[0].FileID)
-		require.Equal(t, http.StatusNotFound, rr.Code, rr.Body.String())
+		require.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
 	})
 }

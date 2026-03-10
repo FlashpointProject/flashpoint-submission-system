@@ -428,6 +428,77 @@ func (a *App) IsUserWithinResourceLimit(r *http.Request, uid int64, resourceKey 
 	return true, nil
 }
 
+func (a *App) SubmissionOwnsChildResource(r *http.Request, childResourceKey string) (bool, error) {
+	ctx := r.Context()
+	params := mux.Vars(r)
+
+	submissionID := params[constants.ResourceKeySubmissionID]
+	sid, err := strconv.ParseInt(submissionID, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid submission id")
+	}
+
+	switch childResourceKey {
+	case constants.ResourceKeyFileID:
+		fileID := params[constants.ResourceKeyFileID]
+		fid, err := strconv.ParseInt(fileID, 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("invalid file id")
+		}
+
+		sf, found, err := a.Service.GetSubmissionFile(ctx, fid)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, nil
+		}
+		return sf.SubmissionID == sid, nil
+
+	case constants.ResourceKeyCommentID:
+		commentID := params[constants.ResourceKeyCommentID]
+		cid, err := strconv.ParseInt(commentID, 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("invalid comment id")
+		}
+
+		comment, found, err := a.Service.GetComment(ctx, cid)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, nil
+		}
+		return comment.SubmissionID == sid, nil
+
+	case constants.ResourceKeyCurationImageID:
+		curationImageID := params[constants.ResourceKeyCurationImageID]
+		ciid, err := strconv.ParseInt(curationImageID, 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("invalid curation image id")
+		}
+
+		image, found, err := a.Service.LookupCurationImage(ctx, ciid)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, nil
+		}
+
+		sf, found, err := a.Service.GetSubmissionFile(ctx, image.SubmissionFileID)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, nil
+		}
+		return sf.SubmissionID == sid, nil
+	}
+
+	return false, fmt.Errorf("invalid resource")
+}
+
 // UserCanCommentAction accepts user that has all of requiredRoles and owns given resource(s)
 func (a *App) UserCanCommentAction(r *http.Request, uid int64) (bool, error) {
 	if err := r.ParseForm(); err != nil {

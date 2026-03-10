@@ -49,15 +49,7 @@ func (a *App) HandleDownloadSubmissionFile(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	uid := utils.UserID(ctx)
 	params := mux.Vars(r)
-	submissionID := params[constants.ResourceKeySubmissionID]
 	submissionFileID := params[constants.ResourceKeyFileID]
-
-	sid, err := strconv.ParseInt(submissionID, 10, 64)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		writeError(ctx, w, perr("invalid submission id", http.StatusBadRequest))
-		return
-	}
 
 	sfid, err := strconv.ParseInt(submissionFileID, 10, 64)
 	if err != nil {
@@ -72,10 +64,6 @@ func (a *App) HandleDownloadSubmissionFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	sf := sfs[0]
-	if sf.SubmissionID != sid {
-		writeError(ctx, w, perr("submission file not found", http.StatusNotFound))
-		return
-	}
 
 	err = a.Service.EmitSubmissionDownloadEvent(ctx, uid, sf.SubmissionID, sfid)
 	if err != nil {
