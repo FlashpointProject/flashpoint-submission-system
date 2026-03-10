@@ -68,6 +68,15 @@ func (a *App) setupRoutes(router *mux.Router) {
 	userHasNoSubmissions := func(r *http.Request, uid int64) (bool, error) {
 		return a.IsUserWithinResourceLimit(r, uid, constants.ResourceKeySubmissionID, 1)
 	}
+	submissionOwnsFile := func(r *http.Request, uid int64) (bool, error) {
+		return a.SubmissionOwnsChildResource(r, constants.ResourceKeyFileID)
+	}
+	submissionOwnsComment := func(r *http.Request, uid int64) (bool, error) {
+		return a.SubmissionOwnsChildResource(r, constants.ResourceKeyCommentID)
+	}
+	submissionOwnsCurationImage := func(r *http.Request, uid int64) (bool, error) {
+		return a.SubmissionOwnsChildResource(r, constants.ResourceKeyCurationImageID)
+	}
 	isSubmissionFrozen := func(r *http.Request, uid int64) (bool, error) {
 		return a.IsResourceFrozen(r, constants.ResourceKeySubmissionID)
 	}
@@ -722,6 +731,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/data/submission/{%s}/file/{%s}", constants.ResourceKeySubmissionID, constants.ResourceKeyFileID),
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadSubmissionFile, types.AuthScopeSubmissionReadFiles),
+			submissionOwnsFile,
 			muxAny(
 				muxAll(muxNot(isSubmissionFrozen), isStaff),
 				muxAll(muxNot(isSubmissionFrozen), isTrialCurator),
@@ -746,6 +756,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/data/submission/{%s}/curation-image/{%s}.png", constants.ResourceKeySubmissionID, constants.ResourceKeyCurationImageID),
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadCurationImage, types.AuthScopeSubmissionRead),
+			submissionOwnsCurationImage,
 			muxAny(
 				muxAll(muxNot(isSubmissionFrozen), isStaff),
 				muxAll(muxNot(isSubmissionFrozen), isTrialCurator),
@@ -759,6 +770,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/api/submission/{%s}/file/{%s}", constants.ResourceKeySubmissionID, constants.ResourceKeyFileID),
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
 			a.RequestScope(a.HandleSoftDeleteSubmissionFile, types.AuthScopeAll),
+			submissionOwnsFile,
 			muxAll(muxNot(isSubmissionFrozen), isDeleter)), false))).
 		Methods("DELETE")
 
@@ -774,6 +786,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/api/submission/{%s}/comment/{%s}", constants.ResourceKeySubmissionID, constants.ResourceKeyCommentID),
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
 			a.RequestScope(a.HandleSoftDeleteComment, types.AuthScopeAll),
+			submissionOwnsComment,
 			muxAll(muxNot(isSubmissionFrozen), isDeleter)), false))).
 		Methods("DELETE")
 
