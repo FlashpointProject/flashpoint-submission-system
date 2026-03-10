@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/logging"
@@ -60,6 +62,31 @@ func hasCommentID(comments []*types.ExtendedComment, cid int64) bool {
 		}
 	}
 	return false
+}
+
+func addBatchComment(t *testing.T, l *logrus.Entry, app *transport.App, cookie *http.Cookie, sids []int64, action, message string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rawIDs := make([]string, 0, len(sids))
+	for _, sid := range sids {
+		rawIDs = append(rawIDs, fmt.Sprintf("%d", sid))
+	}
+
+	data := url.Values{}
+	data.Set("action", action)
+	data.Set("message", message)
+	data.Set("ignore-duplicate-actions", "false")
+
+	req, err := http.NewRequest("POST",
+		fmt.Sprintf("/api/submission-batch/%s/comment", strings.Join(rawIDs, ",")),
+		strings.NewReader(data.Encode()))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+
+	rr := httptest.NewRecorder()
+	logging.LogRequestHandler(l, app.Mux).ServeHTTP(rr, req)
+	return rr
 }
 
 func TestSubmissionResourceBinding(t *testing.T) {
@@ -146,6 +173,33 @@ func TestSubmissionResourceBinding(t *testing.T) {
 		activeSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 
 		rr = downloadCurationImage(t, l, app, curator.Cookie, activeSID, imageIDs[0])
+		require.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
+	})
+
+	t.Run("BatchCommentCannotIncludeFrozenSubmissionAfterUnfrozenOne", func(t *testing.T) {
+		unfrozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+		frozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+
+		rr := freezeSubmission(t, l, app, moderator.Cookie, frozenSID)
+		require.Equal(t, http.StatusNoContent, rr.Code, rr.Body.String())
+
+		rr = addBatchComment(t, l, app, curator.Cookie, []int64{unfrozenSID, frozenSID}, "comment", "mixed frozen batch should be rejected")
+		require.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
+	})
+
+	t.Run("BatchDownloadCannotIncludeFrozenSubmissionAfterUnfrozenOne", func(t *testing.T) {
+		unfrozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+		unfrozenFiles := getSubmissionFilesBySubmissionID(t, ctx, db, unfrozenSID)
+		require.Len(t, unfrozenFiles, 1)
+
+		frozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
+		frozenFiles := getSubmissionFilesBySubmissionID(t, ctx, db, frozenSID)
+		require.Len(t, frozenFiles, 1)
+
+		rr := freezeSubmission(t, l, app, moderator.Cookie, frozenSID)
+		require.Equal(t, http.StatusNoContent, rr.Code, rr.Body.String())
+
+		rr = downloadSubmissionBatch(t, l, app, curator.Cookie, []int64{unfrozenFiles[0].FileID, frozenFiles[0].FileID})
 		require.Equal(t, http.StatusUnauthorized, rr.Code, rr.Body.String())
 	})
 }
