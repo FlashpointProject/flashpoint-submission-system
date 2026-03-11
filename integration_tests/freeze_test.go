@@ -43,15 +43,9 @@ func TestFreezeUnfreeze(t *testing.T) {
 
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 
-	const (
-		roleCurator   = 442665038642413569
-		roleTester    = 442988314480476170
-		roleModerator = 442462642599231499
-	)
-
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000401), []int64{roleCurator}, "submitter")
-	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000402), []int64{roleTester}, "tester")
-	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000403), []int64{roleModerator}, "moderator")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000401), []int64{roleIDCurator}, "submitter")
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000402), []int64{roleIDTester}, "tester")
+	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000403), []int64{roleIDModerator}, "moderator")
 
 	t.Run("ModeratorCanFreeze", func(t *testing.T) {
 		sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)

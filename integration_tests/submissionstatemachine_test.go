@@ -121,18 +121,11 @@ func TestSubmissionStateMachine_BotOverride(t *testing.T) {
 
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 
-	const (
-		roleCurator      = 442665038642413569
-		roleTester       = 442988314480476170
-		roleModerator    = 442462642599231499
-		roleTrialCurator = 569328799318016018
-	)
-
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000301), []int64{roleCurator}, "submitter/curator")
-	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000302), []int64{roleTester}, "tester")
-	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000303), []int64{roleModerator}, "moderator")
-	secondModerator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000304), []int64{roleModerator}, "second-moderator")
-	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000305), []int64{roleTrialCurator}, "trial-curator")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000301), []int64{roleIDCurator}, "submitter/curator")
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000302), []int64{roleIDTester}, "tester")
+	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000303), []int64{roleIDModerator}, "moderator")
+	secondModerator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000304), []int64{roleIDModerator}, "second-moderator")
+	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000305), []int64{roleIDTrialCurator}, "trial-curator")
 
 	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 
@@ -299,22 +292,13 @@ func TestSubmissionStateMachine_MainFlow(t *testing.T) {
 
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 
-	// Role IDs
-	const (
-		roleCurator      = 442665038642413569
-		roleTester       = 442988314480476170
-		roleModerator    = 442462642599231499
-		roleTrialCurator = 569328799318016018
-		roleTrialEditor  = 1101806666380496926
-	)
-
 	// Create users
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000101), []int64{roleCurator}, "submitter/curator") // Submitter is staff, TODO submitter should also be trial
-	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000102), []int64{roleTester}, "tester/tester")
-	verifier := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000103), []int64{roleTester}, "verifier/tester") // Verifiers are testers
-	adder := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000104), []int64{roleModerator}, "adder/moderator")
-	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000105), []int64{roleTrialCurator}, "trial curator")
-	trialEditor := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000106), []int64{roleTrialEditor}, "trial editor")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000101), []int64{roleIDCurator}, "submitter/curator") // Submitter is staff, TODO submitter should also be trial
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000102), []int64{roleIDTester}, "tester/tester")
+	verifier := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000103), []int64{roleIDTester}, "verifier/tester") // Verifiers are testers
+	adder := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000104), []int64{roleIDModerator}, "adder/moderator")
+	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000105), []int64{roleIDTrialCurator}, "trial curator")
+	trialEditor := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000106), []int64{roleIDTrialEditor}, "trial editor")
 
 	// Helper to check button visibility
 	checkButtons := func(t *testing.T, user *extendedTestUser, sid int64, expectedButtons []string, unexpectedButtons []string, msg string) {
@@ -893,18 +877,11 @@ func TestSubmissionStateMachine_AllowedActions(t *testing.T) {
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 	_ = ctx
 
-	// Role IDs
-	const (
-		roleCurator   = 442665038642413569
-		roleTester    = 442988314480476170
-		roleModerator = 442462642599231499
-	)
-
 	// Create users
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000101), []int64{roleCurator}, "submitter/curator")
-	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000102), []int64{roleTester}, "tester")
-	verifier := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000103), []int64{roleTester}, "verifier")
-	adder := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000104), []int64{roleModerator}, "adder")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000101), []int64{roleIDCurator}, "submitter/curator")
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000102), []int64{roleIDTester}, "tester")
+	verifier := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000103), []int64{roleIDTester}, "verifier")
+	adder := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000104), []int64{roleIDModerator}, "adder")
 
 	type allowedAction struct {
 		user   *extendedTestUser

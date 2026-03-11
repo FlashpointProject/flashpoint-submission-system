@@ -107,16 +107,10 @@ func TestSubmissionFileAccess(t *testing.T) {
 
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 
-	const (
-		roleModerator    = 442462642599231499
-		roleCurator      = 442665038642413569
-		roleTrialCurator = 569328799318016018
-	)
-
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000401), []int64{roleTrialCurator}, "submitter")
-	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000402), []int64{roleModerator}, "moderator")
-	curator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000403), []int64{roleCurator}, "curator")
-	otherTrialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000404), []int64{roleTrialCurator}, "other-trial-curator")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000401), []int64{roleIDTrialCurator}, "submitter")
+	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000402), []int64{roleIDModerator}, "moderator")
+	curator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000403), []int64{roleIDCurator}, "curator")
+	otherTrialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000404), []int64{roleIDTrialCurator}, "other-trial-curator")
 	inAudit := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000405), nil, "in-audit")
 
 	t.Run("UnfrozenRoleAccess", func(t *testing.T) {

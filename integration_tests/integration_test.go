@@ -50,7 +50,7 @@ func TestFileSubmission(t *testing.T) {
 
 	// Prepare user with curator role
 	const SubmitterID = 42
-	authToken := createTestUser(t, ctx, l, app, db, pgdb, SubmitterID, []int64{442665038642413569})
+	authToken := createTestUser(t, ctx, l, app, db, pgdb, SubmitterID, []int64{roleIDCurator})
 
 	// Upload submission
 	cookie := createTestCookie(t, l, authToken)
@@ -91,13 +91,13 @@ func TestApproveVerifySubmission(t *testing.T) {
 
 	// Create users
 	// Submitter: Curator
-	submitterAuth := createTestUser(t, ctx, l, app, db, pgdb, SubmitterID, []int64{442665038642413569})
+	submitterAuth := createTestUser(t, ctx, l, app, db, pgdb, SubmitterID, []int64{roleIDCurator})
 	// Tester: Tester
-	_ = createTestUser(t, ctx, l, app, db, pgdb, TesterID, []int64{442988314480476170})
+	_ = createTestUser(t, ctx, l, app, db, pgdb, TesterID, []int64{roleIDTester})
 	// Verifier: Tester
-	_ = createTestUser(t, ctx, l, app, db, pgdb, VerifierID, []int64{442988314480476170})
+	_ = createTestUser(t, ctx, l, app, db, pgdb, VerifierID, []int64{roleIDTester})
 	// Adder: Moderator
-	_ = createTestUser(t, ctx, l, app, db, pgdb, AdderID, []int64{442462642599231499})
+	_ = createTestUser(t, ctx, l, app, db, pgdb, AdderID, []int64{roleIDModerator})
 
 	// 1. Submitter uploads
 	submitterCookie := createTestCookie(t, l, submitterAuth)
