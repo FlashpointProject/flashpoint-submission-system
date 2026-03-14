@@ -2018,7 +2018,6 @@ func (d *postgresDAL) AddSubmissionFromValidator(dbs PGDBSession, uid int64, vr 
 	EnsureString(vr.Meta.Languages, &game.Language)
 	EnsureString(vr.Meta.Library, &game.Library)
 	EnsureString(vr.Meta.PrimaryPlatform, &game.PrimaryPlatform)
-	EnsureString(vr.Meta.RuffleSupport, &game.RuffleSupport)
 	game.UserID = uid
 	game.AddApps = make([]*types.AdditionalApp, 0)
 	game.LogoPath = fmt.Sprintf("Logos/%s/%s/%s.png", game.ID[:2], game.ID[2:4], game.ID)
@@ -2169,7 +2168,7 @@ func (d *postgresDAL) AddSubmissionFromValidator(dbs PGDBSession, uid int64, vr 
 		game.ID, "", game.Title, game.AlternateTitles, game.Series, game.Developer, game.Publisher, game.PlayMode,
 		game.Status, game.Notes, game.Source, game.ApplicationPath, game.LaunchCommand, game.ReleaseDate, game.Version,
 		game.OriginalDesc, game.Language, game.Library, gameData.ID, strings.Join(tagsStrArr, "; "),
-		strings.Join(platformsStrArr, "; "), "create", "Submission Import", uid, game.PrimaryPlatform, state, game.RuffleSupport,
+		strings.Join(platformsStrArr, "; "), "create", "Submission Import", uid, game.PrimaryPlatform, state, "",
 		game.LogoPath, game.ScreenshotPath)
 
 	if err != nil {
