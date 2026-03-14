@@ -48,12 +48,12 @@ var DiscordServerRoles = []types.DiscordRole{
 		Color: "#3498db",
 	},
 	{
-		ID:    442462642599231499,
+		ID:    roleIDModerator,
 		Name:  "Moderator",
 		Color: "#9b59b6",
 	},
 	{
-		ID:    442665038642413569,
+		ID:    roleIDCurator,
 		Name:  "Curator",
 		Color: "#f1c40f",
 	},
@@ -63,7 +63,7 @@ var DiscordServerRoles = []types.DiscordRole{
 		Color: "#b11515",
 	},
 	{
-		ID:    442988314480476170,
+		ID:    roleIDTester,
 		Name:  "Tester",
 		Color: "#e67e22",
 	},
@@ -103,7 +103,7 @@ var DiscordServerRoles = []types.DiscordRole{
 		Color: "#1f8b4c",
 	},
 	{
-		ID:    569328799318016018,
+		ID:    roleIDTrialCurator,
 		Name:  "Trial Curator",
 		Color: "#000000",
 	},
@@ -228,7 +228,7 @@ var DiscordServerRoles = []types.DiscordRole{
 		Color: "#000000",
 	},
 	{
-		ID:    1101806666380496926,
+		ID:    roleIDTrialEditor,
 		Name:  "Trial Editor",
 		Color: "#1abc9c",
 	},
@@ -324,6 +324,43 @@ type validatorMockOptions struct {
 	CurationWarnings    []string
 	CurationErrorsSeq   [][]string
 	CurationWarningsSeq [][]string
+	UploadMeta          *types.CurationMeta
+	RepackMeta          *types.CurationMeta
+}
+
+func defaultValidatorMockMeta() types.CurationMeta {
+	return types.CurationMeta{
+		Title:               utils.StrPtr("Test Game"),
+		AlternateTitles:     utils.StrPtr("Test Game Alt"),
+		ApplicationPath:     utils.StrPtr("content/test-game.swf"),
+		Developer:           utils.StrPtr("Test Developer"),
+		GameNotes:           utils.StrPtr("Validator supplied game notes"),
+		Languages:           utils.StrPtr("en"),
+		LaunchCommand:       utils.StrPtr("Flashpoint/start test-game"),
+		OriginalDescription: utils.StrPtr("Validator supplied original description"),
+		PlayMode:            utils.StrPtr("Single Player"),
+		PrimaryPlatform:     utils.StrPtr("Flash"),
+		Platform:            utils.StrPtr("Flash;Arcade"),
+		Publisher:           utils.StrPtr("Test Publisher"),
+		ReleaseDate:         utils.StrPtr("2020-12-20"),
+		Series:              utils.StrPtr("Test Series"),
+		Source:              utils.StrPtr("https://example.com/test-game"),
+		Status:              utils.StrPtr("Playable"),
+		Tags:                utils.StrPtr("Action;Puzzle"),
+		TagCategories:       utils.StrPtr("genre;genre"),
+		Library:             utils.StrPtr("arcade"),
+		Version:             utils.StrPtr("v1.2.3"),
+		CurationNotes:       utils.StrPtr("Validator supplied curation notes"),
+		MountParameters:     utils.StrPtr("--proxy=localhost"),
+		AdditionalApps: []*types.CurationAdditionalApp{
+			{
+				Heading:         utils.StrPtr("Extras Launcher"),
+				ApplicationPath: utils.StrPtr("extras/launcher.exe"),
+				LaunchCommand:   utils.StrPtr("--launch-extras"),
+			},
+		},
+		RuffleSupport: utils.StrPtr("Standalone"),
+	}
 }
 
 func setupTestEnvironment(t *testing.T) {
@@ -817,17 +854,13 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 
 		if r.URL.Path == "/pack-path" {
 			l.Infof("Mock: Handling /pack-path")
+			meta := defaultValidatorMockMeta()
+			if validatorOptions.RepackMeta != nil {
+				meta = *validatorOptions.RepackMeta
+			}
 			resp := types.ValidatorRepackResponse{
 				FilePath: &path,
-				Meta: types.CurationMeta{
-					Title:           utils.StrPtr("Test Game"),
-					LaunchCommand:   utils.StrPtr("http://test.com"),
-					ApplicationPath: utils.StrPtr("fp"),
-					ReleaseDate:     utils.StrPtr("2020-12-20"),
-					Tags:            utils.StrPtr("a;b;c"),
-					Platform:        utils.StrPtr("a"),
-					// TODO also fill the rest of metadata
-				},
+				Meta:     meta,
 				Images: []types.ValidatorResponseImage{
 					{Type: "logo", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
 					{Type: "screenshot", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
@@ -860,17 +893,13 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 		}
 
 		// Respond with a valid ValidatorResponse
+		meta := defaultValidatorMockMeta()
+		if validatorOptions.UploadMeta != nil {
+			meta = *validatorOptions.UploadMeta
+		}
 		resp := types.ValidatorResponse{
 			Path: path,
-			Meta: types.CurationMeta{
-				Title:           utils.StrPtr("Test Game"),
-				LaunchCommand:   utils.StrPtr("http://test.com"),
-				ApplicationPath: utils.StrPtr("fp"),
-				ReleaseDate:     utils.StrPtr("2020-12-20"), // TODO a test where this is not set
-				Tags:            utils.StrPtr("a;b;c"),
-				Platform:        utils.StrPtr("a"),
-				// TODO also fill the rest of metadata
-			},
+			Meta: meta,
 			CurationErrors:   curationErrors,
 			CurationWarnings: curationWarnings,
 			Images: []types.ValidatorResponseImage{

@@ -41,18 +41,11 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 
-	const (
-		roleCurator      = 442665038642413569
-		roleTester       = 442988314480476170
-		roleModerator    = 442462642599231499
-		roleTrialCurator = 569328799318016018
-	)
-
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000201), []int64{roleCurator}, "submitter")
-	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000202), []int64{roleTester}, "tester")
-	_ = createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000203), []int64{roleTester}, "verifier")
-	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000204), []int64{roleTrialCurator}, "trial-curator")
-	_ = createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000205), []int64{roleModerator}, "adder")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000201), []int64{roleIDCurator}, "submitter")
+	tester := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000202), []int64{roleIDTester}, "tester")
+	_ = createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000203), []int64{roleIDTester}, "verifier")
+	trialCurator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000204), []int64{roleIDTrialCurator}, "trial-curator")
+	_ = createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000205), []int64{roleIDModerator}, "adder")
 
 	t.Run("AutoSubscribeOnUpload", func(t *testing.T) {
 		sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)

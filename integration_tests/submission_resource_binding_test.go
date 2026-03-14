@@ -96,15 +96,9 @@ func TestSubmissionResourceBinding(t *testing.T) {
 
 	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
 
-	const (
-		roleModerator    = 442462642599231499
-		roleCurator      = 442665038642413569
-		roleTrialCurator = 569328799318016018
-	)
-
-	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000501), []int64{roleTrialCurator}, "submitter")
-	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000502), []int64{roleModerator}, "moderator")
-	curator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000503), []int64{roleCurator}, "curator")
+	submitter := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000501), []int64{roleIDTrialCurator}, "submitter")
+	moderator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000502), []int64{roleIDModerator}, "moderator")
+	curator := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000503), []int64{roleIDCurator}, "curator")
 
 	t.Run("MismatchedSubmissionIDCannotDeleteFile", func(t *testing.T) {
 		frozenSID := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
