@@ -232,7 +232,6 @@ func TestSubmissionStateMachine_BotOverride(t *testing.T) {
 // TODO tests after mark added? to cover postgres as well
 // TODO add test for metadata edit ^ ?
 // TODO tests for search
-// TODO test that validator propagates metadata to fpfss correctly, and that they are displayed on the frontend correctly
 
 // advanceToState creates a fresh submission and advances it to the given state.
 // Returns the submission ID.
