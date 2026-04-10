@@ -1873,6 +1873,35 @@ func (s *SiteService) UpdateNotificationSettings(ctx context.Context, uid int64,
 	}
 	defer dbs.Rollback()
 
+	// extra auth step after the usual authmux due to coarse api but fine permission requirements
+	userRoles, err := s.dal.GetDiscordUserRoles(dbs, uid)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
+
+	allowedActions := constants.GetAllowedProfileNotificationActions(userRoles)
+	allowedActionsMap := make(map[string]struct{}, len(allowedActions))
+	for _, action := range allowedActions {
+		allowedActionsMap[action] = struct{}{}
+	}
+
+	staffOnlyActions := constants.GetStaffOnlyProfileNotificationActions()
+	staffOnlyActionsMap := make(map[string]struct{}, len(staffOnlyActions))
+	for _, action := range staffOnlyActions {
+		staffOnlyActionsMap[action] = struct{}{}
+	}
+
+	for _, action := range notificationActions {
+		if _, ok := allowedActionsMap[action]; ok {
+			continue
+		}
+		if _, isStaffOnly := staffOnlyActionsMap[action]; isStaffOnly && !constants.IsStaff(userRoles) {
+			return perr("notification action requires staff role", http.StatusForbidden)
+		}
+		return perr("invalid notification action", http.StatusBadRequest)
+	}
+
 	if err := s.dal.StoreNotificationSettings(dbs, uid, notificationActions); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
