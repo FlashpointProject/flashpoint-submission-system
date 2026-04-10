@@ -64,6 +64,32 @@ func GetActionsWithNotification() []string {
 	}
 }
 
+func GetProfileNotificationActions() []string {
+	return []string{
+		ActionComment,
+		ActionApprove,
+		ActionRequestChanges,
+		ActionMarkAdded,
+		ActionUpload,
+		ActionReject,
+	}
+}
+
+func GetStaffOnlyProfileNotificationActions() []string {
+	return []string{
+		ActionAuditionUpload,
+		ActionAuditionSubscribe,
+	}
+}
+
+func GetAllowedProfileNotificationActions(roles []string) []string {
+	actions := append([]string{}, GetProfileNotificationActions()...)
+	if IsStaff(roles) {
+		actions = append(actions, GetStaffOnlyProfileNotificationActions()...)
+	}
+	return actions
+}
+
 const (
 	ResourceKeySubmissionID     = "submission-id"
 	ResourceKeySubmissionIDs    = "submission-ids"

@@ -32,12 +32,14 @@
             <label for="notification-action">Reject
                 <input type="checkbox" class="notification-action" value="reject"
                        {{if has "reject" .NotificationActions}}checked{{end}}></label>
-            <label for="notification-action">Get notified about every new audition upload
-                <input type="checkbox" class="notification-action" value="audition-upload"
-                       {{if has "audition-upload" .NotificationActions}}checked{{end}}></label>
-            <label for="notification-action">Automatically subscribe to every new audition upload
-                <input type="checkbox" class="notification-action" value="audition-subscribe"
-                       {{if has "audition-subscribe" .NotificationActions}}checked{{end}}></label>
+            {{if isStaff .UserRoles}}
+                <label for="notification-action">Get notified about every new audition upload
+                    <input type="checkbox" class="notification-action" value="audition-upload"
+                           {{if has "audition-upload" .NotificationActions}}checked{{end}}></label>
+                <label for="notification-action">Automatically subscribe to every new audition upload
+                    <input type="checkbox" class="notification-action" value="audition-subscribe"
+                           {{if has "audition-subscribe" .NotificationActions}}checked{{end}}></label>
+            {{end}}
             <button type="button" onclick="updateNotificationSettings()" class="pure-button pure-button-primary">
                 Update
             </button>

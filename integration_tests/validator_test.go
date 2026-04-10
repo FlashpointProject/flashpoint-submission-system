@@ -109,10 +109,10 @@ func TestSubmissionStateMachine_ValidatorMetadataPropagation(t *testing.T) {
 
 	var (
 		title, alternateTitles, series, developer, publisher string
-		playMode, status, notes, source                     string
-		applicationPath, launchCommand                      string
-		releaseDate, version, originalDescription           string
-		language, library, primaryPlatform, ruffleSupport   string
+		playMode, status, notes, source                      string
+		applicationPath, launchCommand                       string
+		releaseDate, version, originalDescription            string
+		language, library, primaryPlatform, ruffleSupport    string
 	)
 	err = postgres.QueryRow(ctx, `SELECT title, alternate_titles, series, developer, publisher, play_mode, status, notes,
 			source, application_path, launch_command, release_date, version, original_description, language, library,
