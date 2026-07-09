@@ -2105,15 +2105,6 @@ func (s *SiteService) getSimilarityScores(dbs database.DBSession, minimumMatch f
 	ctx := dbs.Ctx()
 	start := time.Now()
 
-	// TODO refactor this into something more proper
-	// change minimum match for some specific launch commands
-	if launchCommand != nil {
-		// itch.io games
-		if strings.Contains(*launchCommand, "ssl.hwcdn.net/html") {
-			minimumMatch = 0.95
-		}
-	}
-
 	sas, err := s.dal.GetAllSimilarityAttributes(dbs)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -2143,9 +2134,20 @@ func (s *SiteService) getSimilarityScores(dbs database.DBSession, minimumMatch f
 		nt = normalize(*title)
 	}
 
+	titleMinimumMatch := minimumMatch
+	launchCommandMinimumMatch := minimumMatch
+
 	var nlc string
 	if launchCommand != nil {
 		nlc = normalize(*launchCommand)
+
+		// TODO refactor this into something more proper.
+		// Change launch command match thresholds for common hosted game URL patterns.
+		if strings.Contains(nlc, "itch.zone/html/") || strings.Contains(nlc, "konggames.com/gamez/") {
+			launchCommandMinimumMatch = 0.97
+		} else if strings.Contains(nlc, "ssl.hwcdn.net/html") {
+			launchCommandMinimumMatch = 0.95
+		}
 	}
 
 	for _, sa := range sas {
@@ -2154,7 +2156,7 @@ func (s *SiteService) getSimilarityScores(dbs database.DBSession, minimumMatch f
 			distance := levenshtein.ComputeDistance(nt, nc)
 			matchRatio := 1 - (float64(distance) / math.Max(float64(len(nt)), float64(len(nc))))
 
-			if matchRatio > minimumMatch {
+			if matchRatio > titleMinimumMatch {
 				sa.TitleRatio = matchRatio
 				byTitle = append(byTitle, sa)
 			}
@@ -2164,7 +2166,7 @@ func (s *SiteService) getSimilarityScores(dbs database.DBSession, minimumMatch f
 			distance := levenshtein.ComputeDistance(nlc, nc)
 			matchRatio := 1 - (float64(distance) / math.Max(float64(len(nlc)), float64(len(nc))))
 
-			if matchRatio > minimumMatch {
+			if matchRatio > launchCommandMinimumMatch {
 				sa.LaunchCommandRatio = matchRatio
 				byLaunchCommand = append(byLaunchCommand, sa)
 			}
