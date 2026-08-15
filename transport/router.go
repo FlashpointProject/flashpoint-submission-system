@@ -134,7 +134,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		Methods("POST")
 	router.Handle(
 		"/auth/device",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleOauthDevice, types.AuthScopeAll),
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.requestDeviceFlowApproval(a.HandleOauthDevice),
 			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
 		Methods("GET")
 	router.Handle(
@@ -143,7 +143,8 @@ func (a *App) setupRoutes(router *mux.Router) {
 		Methods("POST")
 	router.Handle(
 		"/auth/device/respond",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.HandleOauthDeviceResponse), false))).
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.requestDeviceFlowApproval(a.HandleOauthDeviceResponse),
+			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
 		Methods("POST")
 
 	router.Handle(
