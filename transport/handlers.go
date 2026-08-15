@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"image/png"
 	"io"
 	"math/rand"
 	"mime/multipart"
@@ -28,6 +30,17 @@ import (
 )
 
 var epoch = time.Unix(0, 0).Format(time.RFC1123)
+
+const (
+	submissionMetaEditMemoryLimit   = 1 << 20  // 1 MiB before multipart files spill to disk
+	submissionMetaEditMetadataLimit = 1 << 20  // 1 MiB
+	submissionMetaEditFileLimit     = 15 << 20 // 15 MiB per image
+	submissionMetaEditRequestLimit  = 32 << 20 // 32 MiB including multipart overhead
+	submissionMetaEditMaxDimension  = 16384
+	submissionMetaEditMaxPixels     = 100_000_000
+)
+
+var errSubmissionMetaEditTooLarge = errors.New("submission meta-edit upload is too large")
 
 var noCacheHeaders = map[string]string{
 	"Expires":         epoch,
@@ -1444,24 +1457,40 @@ func (a *App) HandleApplySubmissionMetaEditPage(w http.ResponseWriter, r *http.R
 	}
 
 	if utils.RequestType(ctx) == constants.RequestJSON && r.Method == "POST" {
-		err = r.ParseMultipartForm(52428800) // 50mb limit
+		r.Body = http.MaxBytesReader(w, r.Body, submissionMetaEditRequestLimit)
+		err = r.ParseMultipartForm(submissionMetaEditMemoryLimit)
 		if err != nil {
-			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
+			status := http.StatusBadRequest
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) || errors.Is(err, multipart.ErrMessageTooLarge) {
+				status = http.StatusRequestEntityTooLarge
+				err = errSubmissionMetaEditTooLarge
+			}
+			writeResponse(ctx, w, err.Error(), status)
 			return
 		}
+		defer r.MultipartForm.RemoveAll()
 
 		var logoPoint *multipart.File
 		var screenshotPoint *multipart.File
 
 		raw_meta := r.FormValue("metadata")
+		if len(raw_meta) > submissionMetaEditMetadataLimit {
+			writeResponse(ctx, w, "metadata exceeds the 1 MiB limit", http.StatusRequestEntityTooLarge)
+			return
+		}
 		logo, logoHeader, err := r.FormFile("logo")
 		if err != nil && err != http.ErrMissingFile {
 			writeResponse(ctx, w, err.Error(), http.StatusBadRequest)
 			return
 		} else if err == nil {
 			defer logo.Close()
-			if !strings.HasSuffix(strings.ToLower(logoHeader.Filename), ".png") {
-				writeError(ctx, w, perr("Invalid logo file type", http.StatusBadRequest))
+			if err = validateSubmissionMetaEditPNG(logo, logoHeader); err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, errSubmissionMetaEditTooLarge) {
+					status = http.StatusRequestEntityTooLarge
+				}
+				writeResponse(ctx, w, err.Error(), status)
 				return
 			}
 			logoPoint = &logo
@@ -1473,8 +1502,12 @@ func (a *App) HandleApplySubmissionMetaEditPage(w http.ResponseWriter, r *http.R
 			return
 		} else if err == nil {
 			defer screenshot.Close()
-			if !strings.HasSuffix(strings.ToLower(screenshotHeader.Filename), ".png") {
-				writeError(ctx, w, perr("Invalid screenshot file type", http.StatusBadRequest))
+			if err = validateSubmissionMetaEditPNG(screenshot, screenshotHeader); err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, errSubmissionMetaEditTooLarge) {
+					status = http.StatusRequestEntityTooLarge
+				}
+				writeResponse(ctx, w, err.Error(), status)
 				return
 			}
 			screenshotPoint = &screenshot
@@ -1500,6 +1533,30 @@ func (a *App) HandleApplySubmissionMetaEditPage(w http.ResponseWriter, r *http.R
 		writeResponse(ctx, w, presp("Success", 200), http.StatusOK)
 		return
 	}
+}
+
+func validateSubmissionMetaEditPNG(file multipart.File, header *multipart.FileHeader) error {
+	if header.Size > submissionMetaEditFileLimit {
+		return fmt.Errorf("%w: %s exceeds the 15 MiB limit", errSubmissionMetaEditTooLarge, header.Filename)
+	}
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".png") {
+		return fmt.Errorf("invalid image file type: %s", header.Filename)
+	}
+
+	config, err := png.DecodeConfig(file)
+	if err != nil {
+		return fmt.Errorf("invalid PNG file %s: %w", header.Filename, err)
+	}
+	if config.Width <= 0 || config.Height <= 0 ||
+		config.Width > submissionMetaEditMaxDimension || config.Height > submissionMetaEditMaxDimension ||
+		int64(config.Width)*int64(config.Height) > submissionMetaEditMaxPixels {
+		return fmt.Errorf("PNG dimensions exceed the supported limit: %s", header.Filename)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to rewind PNG file %s: %w", header.Filename, err)
+	}
+
+	return nil
 }
 
 func (a *App) HandleViewSubmissionPage(w http.ResponseWriter, r *http.Request) {
