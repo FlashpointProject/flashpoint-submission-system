@@ -883,6 +883,38 @@ function parseDiff(diff) {
     return diff;
 }
 
+function createEmptyDiffValue() {
+    const empty = document.createElement('span');
+    empty.style.color = '#999';
+    empty.style.fontStyle = 'italic';
+    empty.textContent = '(empty)';
+    return empty;
+}
+
+function createTagList(tags) {
+    const tagList = document.createElement('div');
+    tagList.className = 'tag-list';
+
+    tags.forEach(tag => {
+        const tagBox = document.createElement('div');
+        tagBox.className = 'tag-box';
+        const tagName = document.createElement('div');
+        tagName.textContent = tag;
+        tagBox.appendChild(tagName);
+        tagList.appendChild(tagBox);
+    });
+
+    return tagList;
+}
+
+function appendDiffValue(cell, value) {
+    if (value) {
+        cell.textContent = value;
+    } else {
+        cell.appendChild(createEmptyDiffValue());
+    }
+}
+
 function createDiffTable(diff, outputId) {
     let table = document.createElement('table');
     table.className = "pure-table pure-table-striped revisions-table";
@@ -907,32 +939,28 @@ function createDiffTable(diff, outputId) {
         switch (key) {
             case 'tags': {
                 // Previous
-                const prevEmpty = !diff[key].previous
-                cell2.innerHTML = (!prevEmpty) ? '<div class="tag-list">' + diff[key].previous.map(tag => {
-                    return `<div class="tag-box"><div>${tag}</div></div>`
-                }).join('') + '</div' : '<span style="color: #999; font-style: italic;">(empty)</span>';
+                const prevEmpty = !diff[key].previous || diff[key].previous.length === 0;
+                cell2.appendChild(prevEmpty ? createEmptyDiffValue() : createTagList(diff[key].previous));
                 // Current
                 const newElem = document.createElement('div');
-                newElem.innerHTML = diff[key].current.length > 0 ? '<div class="tag-list">' + diff[key].current.map(tag => {
-                    return `<div class="tag-box"><div>${tag}</div></div>`
-                }).join('') + '</div>' : '<span style="color: #999; font-style: italic;">(empty)</span>';
+                newElem.appendChild(diff[key].current.length > 0 ? createTagList(diff[key].current) : createEmptyDiffValue());
                 cell3.appendChild(newElem);
                 // Added
                 if (!prevEmpty && diff[key].added && diff[key].added.length > 0) {
                     const addedElem = document.createElement('div');
                     addedElem.className = 'diff-tagged-added';
-                    addedElem.innerHTML = '<b>+ ADDED:</b> ' + '<div class="tag-list">' + diff[key].added.map(tag => {
-                        return `<div class="tag-box"><div>${tag}</div></div>`
-                    }).join('') + '</div>';
+                    const addedLabel = document.createElement('b');
+                    addedLabel.textContent = '+ ADDED:';
+                    addedElem.append(addedLabel, ' ', createTagList(diff[key].added));
                     cell3.appendChild(addedElem);
                 }
                 // Removed
                 if (!prevEmpty && diff[key].removed && diff[key].removed.length > 0) {
                     const removedElem = document.createElement('div');
                     removedElem.className = 'diff-tagged-removed';
-                    removedElem.innerHTML = '<b>- REMOVED:</b> ' + '<div class="tag-list">' + diff[key].removed.map(tag => {
-                        return `<div class="tag-box"><div>${tag}</div></div>`
-                    }).join('') + '</div>';
+                    const removedLabel = document.createElement('b');
+                    removedLabel.textContent = '- REMOVED:';
+                    removedElem.append(removedLabel, ' ', createTagList(diff[key].removed));
                     cell3.appendChild(removedElem);
                 }
                 break;
@@ -942,18 +970,18 @@ function createDiffTable(diff, outputId) {
                 if (diff[key].previous) {
                     cell2.appendChild(getGameImageDiv(diff[key].previous));
                 } else {
-                    cell2.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+                    cell2.appendChild(createEmptyDiffValue());
                 }
                 if (diff[key].current) {
                     cell3.appendChild(getGameImageDiv(diff[key].current));
                 } else {
-                    cell3.innerHTML = '<span style="color: #999; font-style: italic;">(empty)</span>';
+                    cell3.appendChild(createEmptyDiffValue());
                 }
                 break;
             }
             default: {
-                cell2.innerHTML = diff[key].previous || '<span style="color: #999; font-style: italic;">(empty)</span>';
-                cell3.innerHTML = diff[key].current || '<span style="color: #999; font-style: italic;">(empty)</span>';
+                appendDiffValue(cell2, diff[key].previous);
+                appendDiffValue(cell3, diff[key].current);
                 break;
             }
         }

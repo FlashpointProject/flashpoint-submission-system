@@ -3162,6 +3162,18 @@ func (s *SiteService) UserBan(ctx context.Context, uid int64) (int64, error) {
 }
 
 func (s *SiteService) SaveGame(ctx context.Context, game *types.Game) error {
+	return s.saveGame(ctx, game, true, true)
+}
+
+func (s *SiteService) SaveGameLogo(ctx context.Context, game *types.Game) error {
+	return s.saveGame(ctx, game, false, true)
+}
+
+func (s *SiteService) SaveGameScreenshot(ctx context.Context, game *types.Game) error {
+	return s.saveGame(ctx, game, true, false)
+}
+
+func (s *SiteService) saveGame(ctx context.Context, game *types.Game, preserveLogoPath bool, preserveScreenshotPath bool) error {
 	uid := utils.UserID(ctx)
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
@@ -3192,7 +3204,11 @@ func (s *SiteService) SaveGame(ctx context.Context, game *types.Game) error {
 
 	if !constants.IsDeleter(userRoles) {
 		game.Source = existingGame.Source
+	}
+	if preserveLogoPath {
 		game.LogoPath = existingGame.LogoPath
+	}
+	if preserveScreenshotPath {
 		game.ScreenshotPath = existingGame.ScreenshotPath
 	}
 	if game.LogoPath == "" {

@@ -134,7 +134,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		Methods("POST")
 	router.Handle(
 		"/auth/device",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleOauthDevice, types.AuthScopeAll),
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.requestDeviceFlowApproval(a.HandleOauthDevice),
 			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
 		Methods("GET")
 	router.Handle(
@@ -143,7 +143,8 @@ func (a *App) setupRoutes(router *mux.Router) {
 		Methods("POST")
 	router.Handle(
 		"/auth/device/respond",
-		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.HandleOauthDeviceResponse), false))).
+		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.requestDeviceFlowApproval(a.HandleOauthDeviceResponse),
+			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
 		Methods("POST")
 
 	router.Handle(
@@ -431,7 +432,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 	router.Handle(
 		fmt.Sprintf("/api/game/{%s}/restore", constants.ResourceKeyGameID),
 		http.HandlerFunc(a.RequestJSON(f, false))).
-		Methods("GET")
+		Methods("POST")
 
 	f = a.UserAuthMux(
 		a.RequestScope(a.HandleGameLogo, types.AuthScopeGameEdit),
@@ -854,7 +855,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
 			a.RequestScope(a.HandleUserBan, types.AuthScopeAll),
 			muxAny(isDeleter)), false))).
-		Methods("GET")
+		Methods("POST")
 
 	// upload status
 
@@ -895,7 +896,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 
 	router.Handle("/api/internal/recompute-submission-cache-all",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleRecomputeSubmissionCacheAll, types.AuthScopeAll), isGod), false))).
-		Methods("GET")
+		Methods("POST")
 
 	router.Handle("/api/internal/delete-user-sessions",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleDeleteUserSessions, types.AuthScopeAll), isGod), false))).
@@ -911,11 +912,11 @@ func (a *App) setupRoutes(router *mux.Router) {
 
 	router.Handle("/api/internal/send-reminders-about-requested-changes",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleSendRemindersAboutRequestedChanges, types.AuthScopeAll), isGod), false))).
-		Methods("GET")
+		Methods("POST")
 
 	router.Handle("/api/internal/nuke-session-table",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleNukeSessionTable, types.AuthScopeAll), isGod), false))).
-		Methods("GET")
+		Methods("POST")
 
 	router.Handle("/api/stat",
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(a.RequestScope(a.HandleStat, types.AuthScopeAll), isGod), false))).

@@ -2281,21 +2281,8 @@ func (d *postgresDAL) DeleteGame(dbs PGDBSession, gameId string, uid int64, reas
 	}
 
 	for _, imagePath := range imagePaths {
-		oldFilePath := fmt.Sprintf("%s/%s", imagesPath, imagePath)
-		if _, err := os.Stat(oldFilePath); err == nil {
-			newFilePath := fmt.Sprintf("%s/%s", deletedImagesPath, imagePath)
-			err = os.MkdirAll(filepath.Dir(newFilePath), 0755)
-			if err != nil {
-				return err
-			}
-			err = utils.CopyFile(oldFilePath, newFilePath)
-			if err != nil {
-				return err
-			}
-			err = os.Remove(oldFilePath)
-			if err != nil {
-				return err
-			}
+		if err := utils.MoveFileBetweenRoots(imagesPath, deletedImagesPath, imagePath); err != nil {
+			return fmt.Errorf("move game image %q to deleted images: %w", imagePath, err)
 		}
 	}
 
@@ -2355,21 +2342,8 @@ func (d *postgresDAL) RestoreGame(dbs PGDBSession, gameId string, uid int64, rea
 	}
 
 	for _, imagePath := range imagePaths {
-		oldFilePath := fmt.Sprintf("%s/%s", deletedImagesPath, imagePath)
-		if _, err := os.Stat(oldFilePath); err == nil {
-			newFilePath := fmt.Sprintf("%s/%s", imagesPath, imagePath)
-			err = os.MkdirAll(filepath.Dir(newFilePath), 0755)
-			if err != nil {
-				return err
-			}
-			err = utils.CopyFile(oldFilePath, newFilePath)
-			if err != nil {
-				return err
-			}
-			err = os.Remove(oldFilePath)
-			if err != nil {
-				return err
-			}
+		if err := utils.MoveFileBetweenRoots(deletedImagesPath, imagesPath, imagePath); err != nil {
+			return fmt.Errorf("restore game image %q: %w", imagePath, err)
 		}
 	}
 

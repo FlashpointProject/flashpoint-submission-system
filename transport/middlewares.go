@@ -46,6 +46,10 @@ func (a *App) RequestScope(next func(http.ResponseWriter, *http.Request), scope 
 	}
 }
 
+func (a *App) requestDeviceFlowApproval(next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+	return a.RequestScope(next, types.AuthScopeAll)
+}
+
 func (a *App) RequestWeb(next func(http.ResponseWriter, *http.Request), slimService bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !a.Conf.FlashpointSourceOnlyMode || slimService {

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -114,63 +113,37 @@ func (c *curationValidator) ApplyEdit(filePath string, editCurationMeta *types.E
 		return nil, err
 	}
 
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	// Add metadata
-	if editCurationMeta != nil {
-		jsonData, err := json.Marshal(editCurationMeta)
-		if err != nil {
-			return nil, err
-		}
-
-		err = writer.WriteField("metadata", string(jsonData))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Add logo
-	if logoFile != nil {
-		logoWriter, err := writer.CreateFormFile("logo", "logo.png")
-		if err != nil {
-			return nil, err
-		}
-		_, err = io.Copy(logoWriter, *logoFile)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Add screenshot
-	if screenshotFile != nil {
-		screenshotWriter, err := writer.CreateFormFile("screenshot", "ss.png")
-		if err != nil {
-			return nil, err
-		}
-		_, err = io.Copy(screenshotWriter, *screenshotFile)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if editCurationMeta == nil && logoFile == nil && screenshotFile == nil {
 		return nil, fmt.Errorf("at least one field must be provided")
 	}
 
-	err = writer.Close()
+	body, pipeWriter := io.Pipe()
+	multipartWriter := multipart.NewWriter(pipeWriter)
+	requestURL := fmt.Sprintf("%s/edit-meta?path=%s", c.validatorServerURL, url.QueryEscape(filePath))
+	req, err := http.NewRequest(http.MethodPost, requestURL, body)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+
+	writeResult := make(chan error, 1)
+	go func() {
+		writeErr := writeApplyEditMultipart(multipartWriter, editCurationMeta, logoFile, screenshotFile)
+		if writeErr == nil {
+			writeErr = multipartWriter.Close()
+		}
+		_ = pipeWriter.CloseWithError(writeErr)
+		writeResult <- writeErr
+	}()
 
 	client := http.Client{Timeout: 86400 * time.Second}
-	resp, err := client.Post(
-		fmt.Sprintf("%s/edit-meta?path=%s", c.validatorServerURL, url.QueryEscape(filePath)),
-		writer.FormDataContentType(),
-		&buf,
-	)
-	if err != nil {
-		return nil, err
+	resp, requestErr := client.Do(req)
+	if requestErr != nil {
+		_ = body.CloseWithError(requestErr)
+	}
+	writeErr := <-writeResult
+	if requestErr != nil || writeErr != nil {
+		return nil, fmt.Errorf("http error: %v, multipart error: %v", requestErr, writeErr)
 	}
 	defer resp.Body.Close()
 
@@ -195,6 +168,40 @@ func (c *curationValidator) ApplyEdit(filePath string, editCurationMeta *types.E
 	}
 
 	return &vr.Path, nil
+}
+
+func writeApplyEditMultipart(writer *multipart.Writer, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) error {
+	if editCurationMeta != nil {
+		jsonData, err := json.Marshal(editCurationMeta)
+		if err != nil {
+			return err
+		}
+		if err := writer.WriteField("metadata", string(jsonData)); err != nil {
+			return err
+		}
+	}
+
+	for _, file := range []struct {
+		fieldName string
+		fileName  string
+		file      *multipart.File
+	}{
+		{fieldName: "logo", fileName: "logo.png", file: logoFile},
+		{fieldName: "screenshot", fileName: "ss.png", file: screenshotFile},
+	} {
+		if file.file == nil {
+			continue
+		}
+		part, err := writer.CreateFormFile(file.fieldName, file.fileName)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(part, *file.file); err != nil {
+			return fmt.Errorf("copying %s: %w", file.fieldName, err)
+		}
+	}
+
+	return nil
 }
 
 func (c *curationValidator) GetTags(ctx context.Context) ([]types.Tag, error) {

@@ -17,7 +17,7 @@
         {{if isDeleter .UserRoles}}
             {{ if .Game.Deleted }}
                 <a class="pure-button pure-button-primary button-approve" onclick="selectReason('Restore Game?', false, {{.ValidRestoreReasons}}, (reason) => {
-                    fetch(`/api/game/` + {{.Game.ID}} + `/restore?reason=${reason}`)
+                    fetch(`/api/game/` + {{.Game.ID}} + `/restore?reason=${reason}`, { method: 'POST' })
                         .then(() => {
                             window.location.reload()
                         })
