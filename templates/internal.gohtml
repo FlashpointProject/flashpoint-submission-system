@@ -9,10 +9,9 @@
         <br>
         <br>
 
-        <a class="pure-button pure-button-primary"
-           href="/api/internal/recompute-submission-cache-all">
-            Recompute Submission Cache
-        </a>
+        <form action="/api/internal/recompute-submission-cache-all" method="POST">
+            <button type="submit" class="pure-button pure-button-primary">Recompute Submission Cache</button>
+        </form>
 
         <br>
         <br>
@@ -38,16 +37,17 @@
         <br>
         <br>
 
-        <a class="pure-button pure-button-primary"
-           href="/api/internal/send-reminders-about-requested-changes">
-           Send Reminders About Submissions With Requested Changes
-        </a>
+        <form action="/api/internal/send-reminders-about-requested-changes" method="POST">
+            <button type="submit" class="pure-button pure-button-primary">
+                Send Reminders About Submissions With Requested Changes
+            </button>
+        </form>
 
         <br>
         <br>
 
-        <a class="pure-button button-delete" href="/api/internal/nuke-session-table">
-            Nuke Session Table
-        </a>
+        <form action="/api/internal/nuke-session-table" method="POST">
+            <button type="submit" class="pure-button button-delete">Nuke Session Table</button>
+        </form>
     </div>
 {{end}}
