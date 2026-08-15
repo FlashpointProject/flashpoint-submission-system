@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -329,4 +330,76 @@ func CopyFile(src string, dest string) error {
 	}
 
 	return nil
+}
+
+// MoveFileBetweenRoots copies name from srcDir to destDir and removes the
+// source. os.Root keeps every filesystem operation confined to its configured
+// directory, including when name or an intermediate symlink attempts to
+// escape it.
+func MoveFileBetweenRoots(srcDir string, destDir string, name string) error {
+	srcRoot, err := os.OpenRoot(srcDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer srcRoot.Close()
+
+	srcInfo, err := srcRoot.Stat(name)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !srcInfo.Mode().IsRegular() {
+		return fmt.Errorf("source is not a regular file")
+	}
+
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	destRoot, err := os.OpenRoot(destDir)
+	if err != nil {
+		return err
+	}
+	defer destRoot.Close()
+
+	if destInfo, err := destRoot.Stat(name); err == nil {
+		if os.SameFile(srcInfo, destInfo) {
+			return fmt.Errorf("source and destination are the same file")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	if err := destRoot.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return err
+	}
+
+	src, err := srcRoot.Open(name)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dest, err := destRoot.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(dest, src); err != nil {
+		dest.Close()
+		return err
+	}
+	if err := dest.Sync(); err != nil {
+		dest.Close()
+		return err
+	}
+	if err := dest.Close(); err != nil {
+		return err
+	}
+
+	return srcRoot.Remove(name)
 }

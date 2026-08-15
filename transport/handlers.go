@@ -1127,7 +1127,7 @@ func (a *App) HandleGameLogo(w http.ResponseWriter, r *http.Request) {
 
 	// Save logo path
 	game.Game.Reason = "Updated Logo"
-	if err := a.Service.SaveGame(ctx, game.Game); err != nil {
+	if err := a.Service.SaveGameLogo(ctx, game.Game); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return
 	}
@@ -1223,7 +1223,7 @@ func (a *App) HandleGameScreenshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save screenshot path
-	if err := a.Service.SaveGame(ctx, game.Game); err != nil {
+	if err := a.Service.SaveGameScreenshot(ctx, game.Game); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return
 	}

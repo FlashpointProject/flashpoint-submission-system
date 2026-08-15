@@ -1,11 +1,14 @@
 package integration_tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
@@ -200,6 +203,44 @@ func TestSubmissionStateMachine_ValidatorMetadataPropagation(t *testing.T) {
 	require.Equal(t, "--launch-extras", apiGame.AddApps[0].LaunchCommand)
 	require.Len(t, apiGame.Tags, 2)
 	require.Len(t, apiGame.Platforms, 2)
+
+	originalLogoPath := apiGame.LogoPath
+	originalScreenshotPath := apiGame.ScreenshotPath
+	apiGame.Title = "Updated Test Game"
+	apiGame.LogoPath = "../../outside-logo.png"
+	apiGame.ScreenshotPath = "/tmp/outside-screenshot.png"
+	gameBody, err := json.Marshal(apiGame)
+	require.NoError(t, err)
+	gameUpdate := httptest.NewRequest("POST", fmt.Sprintf("/api/game/%s", gameID), bytes.NewReader(gameBody))
+	gameUpdate.Header.Set("Content-Type", "application/json")
+	gameUpdate.AddCookie(adder.Cookie)
+	gameUpdateResponse := httptest.NewRecorder()
+	logging.LogRequestHandler(l, app.Mux).ServeHTTP(gameUpdateResponse, gameUpdate)
+	require.Equal(t, http.StatusOK, gameUpdateResponse.Code, gameUpdateResponse.Body.String())
+
+	var savedTitle, savedLogoPath, savedScreenshotPath string
+	err = postgres.QueryRow(ctx, `SELECT title, logo_path, screenshot_path FROM game WHERE id = $1`, gameID).
+		Scan(&savedTitle, &savedLogoPath, &savedScreenshotPath)
+	require.NoError(t, err)
+	require.Equal(t, "Updated Test Game", savedTitle)
+	require.Equal(t, originalLogoPath, savedLogoPath)
+	require.Equal(t, originalScreenshotPath, savedScreenshotPath)
+
+	outsideMarker := filepath.Join(t.TempDir(), "outside-image.png")
+	require.NoError(t, os.WriteFile(outsideMarker, []byte("keep"), 0o644))
+	legacyTraversalPath, err := filepath.Rel(app.Conf.ImagesDir, outsideMarker)
+	require.NoError(t, err)
+	_, err = postgres.Exec(ctx, `UPDATE game SET logo_path = $1 WHERE id = $2`, legacyTraversalPath, gameID)
+	require.NoError(t, err)
+
+	deleteRequest := httptest.NewRequest("DELETE", fmt.Sprintf("/api/game/%s?reason=Owner%%20Request", gameID), nil)
+	deleteRequest.AddCookie(adder.Cookie)
+	deleteResponse := httptest.NewRecorder()
+	logging.LogRequestHandler(l, app.Mux).ServeHTTP(deleteResponse, deleteRequest)
+	require.Equal(t, http.StatusInternalServerError, deleteResponse.Code, deleteResponse.Body.String())
+	markerContents, err := os.ReadFile(outsideMarker)
+	require.NoError(t, err)
+	require.Equal(t, []byte("keep"), markerContents)
 
 	tagNames := []string{apiGame.Tags[0].Name, apiGame.Tags[1].Name}
 	platformNames := []string{apiGame.Platforms[0].Name, apiGame.Platforms[1].Name}
