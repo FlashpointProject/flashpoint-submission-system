@@ -361,8 +361,21 @@ func (a *App) HandleIndexRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Copy headers
-		for key, values := range r.Header {
+		// Forward only headers needed for content negotiation, caching, and range
+		// requests. In particular, application credentials such as Cookie and
+		// Authorization must not cross the index service trust boundary.
+		for _, key := range []string{
+			"Accept",
+			"Accept-Encoding",
+			"Accept-Language",
+			"Cache-Control",
+			"If-Modified-Since",
+			"If-None-Match",
+			"If-Range",
+			"Range",
+			"User-Agent",
+		} {
+			values := r.Header.Values(key)
 			for _, value := range values {
 				proxyReq.Header.Add(key, value)
 			}
