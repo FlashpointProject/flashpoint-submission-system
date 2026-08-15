@@ -1107,46 +1107,58 @@ type DeviceFlowUserAuthToken struct {
 }
 
 type AuthCodeStorage struct {
+	mu     sync.RWMutex
 	tokens map[string]*types.AuthCodeToken
 }
 
 type DeviceFlowStorage struct {
+	mu              sync.RWMutex
 	tokens          map[string]*types.DeviceFlowToken
-	authTokens      map[int64]*[]DeviceFlowUserAuthToken
+	authTokens      map[int64][]DeviceFlowUserAuthToken
 	verificationUrl string
 }
 
 func NewDeviceFlowStorage(baseUrl string) *DeviceFlowStorage {
 	return &DeviceFlowStorage{
 		tokens:          make(map[string]*types.DeviceFlowToken),
-		authTokens:      make(map[int64]*[]DeviceFlowUserAuthToken),
+		authTokens:      make(map[int64][]DeviceFlowUserAuthToken),
 		verificationUrl: strings.TrimRight(baseUrl, "/") + "/auth/device",
 	}
 }
 
 func (s *DeviceFlowStorage) GetUserAuthToken(deviceCode string, clientID string) *types.DeviceFlowToken {
-	var dfToken types.DeviceFlowToken
-	for i, token := range s.tokens {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, token := range s.tokens {
 		if token.DeviceCode == deviceCode && token.ClientApplication.ClientId == clientID {
-			dfToken = *token
+			dfToken := cloneDeviceFlowToken(token)
 			// Remove from server now it has been claimed
-			s.tokens[i].AuthToken = nil
+			token.AuthToken = nil
+			return dfToken
 		}
 	}
 
-	return &dfToken
+	return &types.DeviceFlowToken{}
 }
 
 func (s *DeviceFlowStorage) SaveUserAuthToken(uid int64, token string, deviceCode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	userToken := DeviceFlowUserAuthToken{
 		AuthToken:  token,
 		DeviceCode: deviceCode,
 	}
-	*s.authTokens[uid] = append(*s.authTokens[uid], userToken)
+	s.authTokens[uid] = append(s.authTokens[uid], userToken)
 }
 
 func (s *DeviceFlowStorage) GetUserAuthTokens(uid int64) *[]DeviceFlowUserAuthToken {
-	return s.authTokens[uid]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	tokens := append([]DeviceFlowUserAuthToken(nil), s.authTokens[uid]...)
+	return &tokens
 }
 
 func (s *DeviceFlowStorage) NewToken(scope string, client *types.ClientApplication) (*types.DeviceFlowToken, error) {
@@ -1186,11 +1198,17 @@ func (s *DeviceFlowStorage) NewToken(scope string, client *types.ClientApplicati
 }
 
 func (s *DeviceFlowStorage) Save(token *types.DeviceFlowToken) error {
-	s.tokens[token.UserCode] = token
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.tokens[token.UserCode] = cloneDeviceFlowToken(token)
 	return nil
 }
 
 func (s *DeviceFlowStorage) Get(userCode string) (*types.DeviceFlowToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	token, found := s.tokens[userCode]
 	if !found {
 		return nil, errors.New("device code not found")
@@ -1198,19 +1216,44 @@ func (s *DeviceFlowStorage) Get(userCode string) (*types.DeviceFlowToken, error)
 	if time.Now().After(token.ExpiresAt) {
 		return nil, errors.New("device code has expired")
 	}
-	return token, nil
+	return cloneDeviceFlowToken(token), nil
 }
 
 func (s *DeviceFlowStorage) Delete(deviceCode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	delete(s.tokens, deviceCode)
 }
 
 func (s *DeviceFlowStorage) Cleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for deviceCode, token := range s.tokens {
 		if time.Now().After(token.ExpiresAt) {
-			s.Delete(deviceCode)
+			delete(s.tokens, deviceCode)
 		}
 	}
+}
+
+func cloneDeviceFlowToken(token *types.DeviceFlowToken) *types.DeviceFlowToken {
+	cloned := *token
+	if token.ClientApplication != nil {
+		client := *token.ClientApplication
+		client.UserRoles = append([]string(nil), token.ClientApplication.UserRoles...)
+		client.ClientCredsScopes = append([]string(nil), token.ClientApplication.ClientCredsScopes...)
+		client.Scopes = append([]string(nil), token.ClientApplication.Scopes...)
+		client.RedirectURIs = append([]string(nil), token.ClientApplication.RedirectURIs...)
+		cloned.ClientApplication = &client
+	}
+	if token.AuthToken != nil {
+		cloned.AuthToken = make(map[string]string, len(token.AuthToken))
+		for key, value := range token.AuthToken {
+			cloned.AuthToken[key] = value
+		}
+	}
+	return &cloned
 }
 
 func NewAuthCodeStorage() *AuthCodeStorage {
@@ -1220,6 +1263,9 @@ func NewAuthCodeStorage() *AuthCodeStorage {
 }
 
 func (s *AuthCodeStorage) Get(code string) (*types.AuthCodeToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	token, found := s.tokens[code]
 	if !found {
 		return nil, errors.New("auth code not found")
@@ -1230,7 +1276,7 @@ func (s *AuthCodeStorage) Get(code string) (*types.AuthCodeToken, error) {
 	if token.State == types.AuthCodeComplete {
 		return nil, errors.New("auth code has already been used")
 	}
-	return token, nil
+	return cloneAuthCodeToken(token), nil
 }
 
 func (s *AuthCodeStorage) NewToken(uid int64, clientId string, redirectUri string, scope string, ipAddr string) (*types.AuthCodeToken, error) {
@@ -1263,20 +1309,34 @@ func (s *AuthCodeStorage) NewToken(uid int64, clientId string, redirectUri strin
 }
 
 func (s *AuthCodeStorage) Save(token *types.AuthCodeToken) error {
-	s.tokens[token.Code] = token
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.tokens[token.Code] = cloneAuthCodeToken(token)
 	return nil
 }
 
 func (s *AuthCodeStorage) Delete(deviceCode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	delete(s.tokens, deviceCode)
 }
 
 func (s *AuthCodeStorage) Cleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for deviceCode, token := range s.tokens {
 		if time.Now().After(token.ExpiresAt) || token.State == types.AuthCodeComplete {
-			s.Delete(deviceCode)
+			delete(s.tokens, deviceCode)
 		}
 	}
+}
+
+func cloneAuthCodeToken(token *types.AuthCodeToken) *types.AuthCodeToken {
+	cloned := *token
+	return &cloned
 }
 
 func hashClientSecret(secret string) (string, error) {
