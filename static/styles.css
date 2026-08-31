@@ -328,6 +328,11 @@ textarea {
     border: 1px solid red;
 }
 
+#users-table tr td:nth-of-type(2)
+{
+    word-break: break-word;
+}
+
 .default-comment {
     color: #000;
 }
