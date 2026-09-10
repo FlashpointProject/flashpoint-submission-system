@@ -28,8 +28,19 @@ func isActionValidForSubmission(uid int64, formAction string, submission *types.
 		}
 	}
 
+	// Import closes review, including attempts made through the batch API.
+	if markedAdded {
+		switch formAction {
+		case constants.ActionAssignTesting, constants.ActionUnassignTesting,
+			constants.ActionAssignVerification, constants.ActionUnassignVerification,
+			constants.ActionApprove, constants.ActionVerify,
+			constants.ActionRequestChanges, constants.ActionReject:
+			return perr(fmt.Sprintf("submission %d is already marked as added so review actions are closed; please submit a bug report or a pending fix", sid), http.StatusBadRequest)
+		}
+	}
+
 	// don't let last uploader decide on the submission
-	if formAction == constants.ActionAssignTesting || formAction == constants.ActionUnassignVerification {
+	if formAction == constants.ActionAssignTesting || formAction == constants.ActionAssignVerification || formAction == constants.ActionUnassignVerification {
 		if uid == submission.LastUploaderID {
 			return perr(fmt.Sprintf("you are the uploader of the newest version of submission %d, so you cannot assign it", sid), http.StatusBadRequest)
 		}
@@ -72,10 +83,6 @@ func isActionValidForSubmission(uid int64, formAction string, submission *types.
 			return perr(fmt.Sprintf("you have already approved submission %d", sid), http.StatusBadRequest)
 		}
 
-	} else if formAction == constants.ActionRequestChanges {
-		if markedAdded {
-			return perr(fmt.Sprintf("submission %d is alrady marked as added so you cannot request changes on it, please submit a bug report or a pending fix if there is a problem with the submission", sid), http.StatusBadRequest)
-		}
 	} else if formAction == constants.ActionVerify {
 		if uidIn(uid, submission.VerifiedUserIDs) {
 			return perr(fmt.Sprintf("you have already verified submission %d", sid), http.StatusBadRequest)
@@ -153,20 +160,6 @@ func isActionValidForSubmission(uid int64, formAction string, submission *types.
 	if formAction == constants.ActionMarkAdded {
 		if len(submission.VerifiedUserIDs) == 0 {
 			return perr(fmt.Sprintf("submission %d is not verified so you cannot mark it as added", sid), http.StatusBadRequest)
-		}
-	}
-
-	// cannot assign if marked as added
-	if formAction == constants.ActionAssignTesting {
-		if markedAdded {
-			return perr(fmt.Sprintf("submission %d is alrady marked as added so you cannot assign it for testing, please submit a bug report or a pending fix if there is a problem with the submission", sid), http.StatusBadRequest)
-		}
-	}
-
-	// cannot reject if marked as added
-	if formAction == constants.ActionReject {
-		if markedAdded {
-			return perr(fmt.Sprintf("submission %d is alrady marked as added so you cannot reject it", sid), http.StatusBadRequest)
 		}
 	}
 

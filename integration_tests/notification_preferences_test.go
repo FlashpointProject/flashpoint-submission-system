@@ -52,24 +52,24 @@ func updateNotificationSettingsRequest(t *testing.T, l *logrus.Entry, app *trans
 
 func notificationQueueCountByType(t *testing.T, maria *sql.DB, notificationType string) int {
 	var count int
-	err := maria.QueryRow(`
+	err := maria.QueryRow(testSQL(`
 		SELECT COUNT(*)
 		FROM submission_notification sn
 		JOIN submission_notification_type snt ON snt.id = sn.fk_submission_notification_type_id
-		WHERE snt.name = ?`, notificationType).Scan(&count)
+		WHERE snt.name = ?`), notificationType).Scan(&count)
 	require.NoError(t, err)
 	return count
 }
 
 func latestQueuedNotificationByType(t *testing.T, maria *sql.DB, notificationType string) queuedNotification {
 	var notification queuedNotification
-	err := maria.QueryRow(`
+	err := maria.QueryRow(testSQL(`
 		SELECT sn.id, snt.name, sn.message
 		FROM submission_notification sn
 		JOIN submission_notification_type snt ON snt.id = sn.fk_submission_notification_type_id
 		WHERE snt.name = ?
 		ORDER BY sn.id DESC
-		LIMIT 1`, notificationType).Scan(&notification.ID, &notification.Type, &notification.Message)
+		LIMIT 1`), notificationType).Scan(&notification.ID, &notification.Type, &notification.Message)
 	require.NoError(t, err)
 	return notification
 }

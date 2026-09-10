@@ -89,5 +89,17 @@ func (s *SubmissionStatusKeeper) Get(tempName string) *types.SubmissionStatus {
 	if !ok {
 		return nil
 	}
-	return ss
+	// Workers continue updating the stored status after Get returns. Return an
+	// independent snapshot so polling/JSON encoding cannot race those updates,
+	// and callers cannot modify keeper state through its pointer fields.
+	result := *ss
+	if ss.Message != nil {
+		message := *ss.Message
+		result.Message = &message
+	}
+	if ss.SubmissionID != nil {
+		id := *ss.SubmissionID
+		result.SubmissionID = &id
+	}
+	return &result
 }

@@ -35,12 +35,12 @@ func downloadCurationImage(t *testing.T, l *logrus.Entry, app *transport.App, co
 func getCurationImageIDsBySubmissionID(t *testing.T, maria *sql.DB, sid int64) []int64 {
 	t.Helper()
 
-	rows, err := maria.Query(`
+	rows, err := maria.Query(testSQL(`
 		SELECT curation_image.id
 		FROM curation_image
 		JOIN submission_file ON submission_file.id = curation_image.fk_submission_file_id
 		WHERE submission_file.fk_submission_id = ?
-		ORDER BY curation_image.id`, sid)
+		ORDER BY curation_image.id`), sid)
 	require.NoError(t, err)
 	defer rows.Close()
 

@@ -1,0 +1,12 @@
+**
+!go.mod
+!go.sum
+!activityevents/**
+!config/**
+!constants/**
+!database/**
+!types/**
+!utils/**
+!cmd/snapshot-cache-audit/**
+!cmd/snapshot-search-baseline/**
+**/*_test.go

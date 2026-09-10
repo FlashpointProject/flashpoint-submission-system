@@ -100,6 +100,8 @@ type DAL interface {
 	GetDiscordUserRoles(dbs DBSession, uid int64) ([]string, error)
 
 	StoreSubmission(dbs DBSession, submissionLevel string) (int64, error)
+	// History/cache mutations require LockSubmissions before the transaction
+	// performs any consistent read, unless the parent was created in that transaction.
 	StoreSubmissionFile(dbs DBSession, s *types.SubmissionFile) (int64, error)
 	GetSubmissionFiles(dbs DBSession, sfids []int64) ([]*types.SubmissionFile, error)
 	GetExtendedSubmissionFilesBySubmissionID(dbs DBSession, sid int64) ([]*types.ExtendedSubmissionFile, error)
@@ -138,6 +140,8 @@ type DAL interface {
 	GetPreviousSubmission(dbs DBSession, sid int64) (int64, error)
 
 	UpdateSubmissionCacheTable(dbs DBSession, sid int64) error
+	ListSubmissionIDsForCacheRebuild(dbs DBSession, afterID int64, limit int) ([]int64, error)
+	RebuildSubmissionCacheTable(dbs DBSession, sid int64) error
 
 	ClearMasterDBGames(dbs DBSession) error
 	StoreMasterDBGames(dbs DBSession, games []*types.MasterDatabaseGame) error

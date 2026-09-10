@@ -1,6 +1,12 @@
 #!make
+ifeq ($(filter snapshot-%,$(MAKECMDGOALS)),)
 include .env
 export $(shell sed 's/=.*//' .env)
+else
+ifneq ($(filter-out snapshot-%,$(MAKECMDGOALS)),)
+$(error Run snapshot targets separately from development targets)
+endif
+endif
 
 .PHONY: db migrate run validator
 
@@ -34,7 +40,7 @@ rebuild-postgres:
 	make migrate
 
 migrate:
-	docker run --rm -v $(shell pwd)/migrations:/migrations --network host migrate/migrate -path=/migrations/ -database "mysql://${DB_USER}:${DB_PASSWORD}@tcp(${DB_IP}:${DB_PORT})/${DB_NAME}" up
+	@if [ "${SUBMISSION_DB_ENGINE}" != "postgres" ]; then docker run --rm -v $(shell pwd)/migrations:/migrations --network host migrate/migrate -path=/migrations/ -database "mysql://${DB_USER}:${DB_PASSWORD}@tcp(${DB_IP}:${DB_PORT})/${DB_NAME}" up; fi
 	docker run --rm -v $(shell pwd)/postgres_migrations:/migrations --network host migrate/migrate -path=/migrations/ -database "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}?sslmode=disable" up
 
 migrate-to:
@@ -65,3 +71,36 @@ dump-pgdb:
 
 build-docs:
 	swag init --parseInternal --dir main,transport,types,constants
+
+# Disposable production-snapshot analysis; never uses .env or integration fixtures.
+.PHONY: snapshot-restore snapshot-status snapshot-audit snapshot-down snapshot-cache
+snapshot-restore:
+	bash scripts/snapshot-db/launch.sh restore
+snapshot-status:
+	bash scripts/snapshot-db/launch.sh status
+snapshot-audit:
+	bash scripts/snapshot-db/launch.sh audit
+snapshot-down:
+	bash scripts/snapshot-db/launch.sh down
+
+snapshot-cache:
+	bash scripts/snapshot-db/launch.sh cache
+
+.PHONY: snapshot-search
+snapshot-search:
+	bash scripts/snapshot-db/launch.sh search
+
+.PHONY: db-postgres snapshot-import
+db-postgres:
+	docker-compose -p ${DB_CONTAINER_NAME} -f dc-db.yml up -d postgres
+
+snapshot-import:
+	bash scripts/submission-import/launch.sh
+
+.PHONY: snapshot-parity
+snapshot-parity:
+	bash scripts/submission-parity/launch.sh
+
+.PHONY: snapshot-concurrency
+snapshot-concurrency:
+	bash scripts/submission-concurrency/run.sh

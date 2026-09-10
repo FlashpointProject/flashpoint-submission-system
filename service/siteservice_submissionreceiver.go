@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -22,7 +24,6 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/resumableuploadservice"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	"github.com/go-sql-driver/mysql"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -163,12 +164,9 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 
 	fid, err := s.dal.StoreSubmissionFile(dbs, sf)
 	if err != nil {
-		me, ok := err.(*mysql.MySQLError)
-		if ok {
-			if me.Number == 1062 {
-				msg := fmt.Sprintf("file '%s' with checksums md5:%s sha256:%s already present in the DB", filename, sf.MD5Sum, sf.SHA256Sum)
-				return nil, perr(msg, http.StatusConflict)
-			}
+		if isUniqueConstraintError(err) {
+			msg := fmt.Sprintf("file '%s' with checksums md5:%s sha256:%s already present in the DB", filename, sf.MD5Sum, sf.SHA256Sum)
+			return nil, perr(msg, http.StatusConflict)
 		}
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
@@ -529,6 +527,24 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 			}
 		}
 
+		// Archive processing does not need to block reviewers. Lock only after
+		// validation, but before similarity or notification queries establish the
+		// MariaDB transaction's read snapshot. The caller must not read through
+		// dbs before entering this function.
+		if sid == nil && submissionLevel == constants.SubmissionLevelAudition {
+			if err := s.checkAuditionSubmissionQuota(dbs, uid); err != nil {
+				return err
+			}
+		}
+		if sid != nil {
+			if err := database.LockSubmissions(dbs, *sid); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return perr("submission not found", http.StatusNotFound)
+				}
+				return dberr(err)
+			}
+		}
+
 		if !vr.Meta.GameExists {
 			utils.LogCtx(ctx).Debug("computing similarity in goroutine...")
 			msg, err = s.computeSimilarityComment(dbs, sid, &vr.Meta)
@@ -558,6 +574,10 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
+		if errors.Is(err, errAuditionSubmissionQuota) {
+			s.SSK.SetFailed(tempName, errAuditionSubmissionQuota.Error())
+			return &destinationFilePath, nil, 0, perr(errAuditionSubmissionQuota.Error(), http.StatusForbidden)
+		}
 		s.SSK.SetFailed(tempName, "validation failed")
 		return &destinationFilePath, nil, 0, err
 	}
@@ -637,13 +657,10 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 
 	fid, err := s.dal.StoreSubmissionFile(dbs, sf)
 	if err != nil {
-		me, ok := err.(*mysql.MySQLError)
-		if ok {
-			if me.Number == 1062 {
-				msg := fmt.Sprintf("file '%s' with checksums md5:%s sha256:%s already present in the DB", filename, sf.MD5Sum, sf.SHA256Sum)
-				s.SSK.SetFailed(tempName, msg)
-				return &destinationFilePath, nil, 0, perr(msg, http.StatusConflict)
-			}
+		if isUniqueConstraintError(err) {
+			msg := fmt.Sprintf("file '%s' with checksums md5:%s sha256:%s already present in the DB", filename, sf.MD5Sum, sf.SHA256Sum)
+			s.SSK.SetFailed(tempName, msg)
+			return &destinationFilePath, nil, 0, perr(msg, http.StatusConflict)
 		}
 		utils.LogCtx(ctx).Error(err)
 		s.SSK.SetFailed(tempName, "internal error")

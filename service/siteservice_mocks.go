@@ -369,3 +369,11 @@ func (fmp *fakeMultipartFile) Seek(offset int64, whence int) (int64, error) {
 func (fmp *fakeMultipartFile) Close() error {
 	return nil
 }
+
+func (m *mockDAL) ListSubmissionIDsForCacheRebuild(_ database.DBSession, afterID int64, limit int) ([]int64, error) {
+	args := m.Called(afterID, limit)
+	return args.Get(0).([]int64), args.Error(1)
+}
+func (m *mockDAL) RebuildSubmissionCacheTable(_ database.DBSession, sid int64) error {
+	return m.Called(sid).Error(0)
+}

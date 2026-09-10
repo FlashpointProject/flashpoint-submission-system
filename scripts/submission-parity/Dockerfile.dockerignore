@@ -1,0 +1,10 @@
+**
+!go.mod
+!go.sum
+!activityevents/**
+!config/**
+!constants/**
+!database/**
+!types/**
+!utils/**
+!cmd/submission-parity/**

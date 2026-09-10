@@ -30,7 +30,7 @@ func unfreezeSubmission(t *testing.T, l *logrus.Entry, app *transport.App, cooki
 
 func getFrozenAt(t *testing.T, maria *sql.DB, sid int64) *time.Time {
 	var frozenAt *time.Time
-	err := maria.QueryRow("SELECT frozen_at FROM submission WHERE id=?", sid).Scan(&frozenAt)
+	err := maria.QueryRow(testSQL("SELECT frozen_at FROM submission WHERE id=?"), sid).Scan(&frozenAt)
 	require.NoError(t, err)
 	return frozenAt
 }

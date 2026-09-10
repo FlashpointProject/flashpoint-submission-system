@@ -1,73 +1,56 @@
-# modified compose without validator, we're mocking everything except for databases
-
-networks:
-  fpfssnetwork-test:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.51.0.0/16
-          gateway: 10.51.0.1
-
+# Provision with run.sh: each invocation owns its network, databases and volumes.
+# No host ports, fixed addresses, production env file or Docker socket are used.
 services:
   database:
-    container_name: ${DB_CONTAINER_NAME}
-    restart: unless-stopped
     image: mariadb:11.1.5
-    platform: linux/amd64
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "${DB_PORT}:3306" # TODO unmap in prod
+      MARIADB_ROOT_PASSWORD: test-root-password
+      MARIADB_DATABASE: ${FPFSS_TEST_DB_NAME:?Use integration_tests/run.sh}
+      MARIADB_USER: fpfss
+      MARIADB_PASSWORD: password
+    command: mariadbd --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max_allowed_packet=256M --sql_mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION --log_bin_trust_function_creators=1
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 2s
+      timeout: 5s
+      retries: 60
     volumes:
-      - fpfssdb_data_test:/var/lib/mysql
-    networks:
-      fpfssnetwork-test:
-        ipv4_address: 10.51.0.2
-    command: mariadbd --max_allowed_packet=256M --sql_mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION" --log_bin_trust_function_creators=1
+      - maria-data:/var/lib/mysql
   postgres:
-    container_name: ${POSTGRES_CONTAINER_NAME}
-    restart: unless-stopped
     image: postgres:15
-    platform: linux/amd64
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 4g
-        reservations:
-          memory: 512m
-    volumes:
-      - fpfss_postgres_data_test:/var/lib/postgresql/data
-      - ./backups/pgdb:/var/lib/postgresql/backups
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "${POSTGRES_PORT}:5432"
-    networks:
-      fpfssnetwork-test:
-        ipv4_address: 10.51.0.3
-#  validator:
-#    container_name: ${VALIDATOR_CONTAINER_NAME}
-#    restart: unless-stopped
-#    image: fpfss-validator:latest
-#    build:
-#      context: ./validator
-#      dockerfile: Dockerfile
-#    environment:
-#      REPACK_DIR: $REPACK_DIR
-#    volumes:
-#      - $REPACK_DIR:$REPACK_DIR
-#      - $SUBMISSIONS_DIR_FULL_PATH:$SUBMISSIONS_DIR_FULL_PATH
-#    ports:
-#      - "${VALIDATOR_PORT}:8000"
-#    networks:
-#      fpfssnetwork-test:
-#        ipv4_address: 10.50.0.4
-
+      POSTGRES_USER: ${FPFSS_TEST_DB_NAME:?Use integration_tests/run.sh}
+      POSTGRES_DB: ${FPFSS_TEST_DB_NAME:?Use integration_tests/run.sh}
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  migrate-maria:
+    image: ${FPFSS_TEST_DB_NAME}-runner
+    entrypoint: [migrate]
+    command: ["-path=/src/migrations", "-database=mysql://fpfss:password@tcp(database:3306)/${FPFSS_TEST_DB_NAME}", up]
+  migrate-postgres:
+    image: ${FPFSS_TEST_DB_NAME}-runner
+    entrypoint: [migrate]
+    command: ["-path=/src/postgres_migrations", "-database=postgres://${FPFSS_TEST_DB_NAME}:password@postgres:5432/${FPFSS_TEST_DB_NAME}?sslmode=disable", up]
+  tests:
+    image: ${FPFSS_TEST_DB_NAME}-runner
+    build:
+      context: ..
+      dockerfile: integration_tests/Dockerfile
+    environment:
+      FPFSS_TEST_DB_NAME: ${FPFSS_TEST_DB_NAME:?Use integration_tests/run.sh}
+      SUBMISSION_DB_ENGINE: ${SUBMISSION_DB_ENGINE:-mariadb}
+    volumes:
+      - ${FPFSS_TEST_RESULTS:?Use integration_tests/run.sh}:/results
+    init: true
 volumes:
-  fpfssdb_data_test:
-  fpfss_postgres_data_test:
+  maria-data:
+  postgres-data:
+networks:
+  default:
+    internal: true

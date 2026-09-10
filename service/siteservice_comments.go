@@ -2,17 +2,24 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
+	"github.com/FlashpointProject/flashpoint-submission-system/database"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 )
 
 func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int64, formAction, formMessage,
 	formIgnoreDupeActions, subDirFullPath, dataPacksDir, frozenPacksDir, imagesDir string, r *http.Request) error {
+	// An empty search filter means all submissions; never use it for a mutation batch.
+	if len(sids) == 0 {
+		return perr("at least one submission ID is required", http.StatusBadRequest)
+	}
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -69,6 +76,13 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 	}
 	if formAction == constants.ActionReject && len(sids) > 1 {
 		return perr("cannot reject multiple submissions at once", http.StatusBadRequest)
+	}
+
+	if err := database.LockSubmissions(dbs, sids...); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return perr("submission not found", http.StatusNotFound)
+		}
+		return dberr(err)
 	}
 
 	utils.LogCtx(ctx).Debugf("searching submissions for comment batch")

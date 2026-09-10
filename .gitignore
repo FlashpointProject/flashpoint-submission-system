@@ -32,3 +32,13 @@ resumable-data/*
 integration_tests/absolute.env
 integration_tests/test_data
 integration_tests/templates
+integration_tests/results/
+
+# Local production snapshots and sanitized derivatives
+/fpfss-*-dump-*.sql.zst
+/sanitized-dumps/
+/scripts/__pycache__/
+
+/snapshot-results/
+/scripts/snapshot-audit/__pycache__/
+/scripts/snapshot-db/__pycache__/

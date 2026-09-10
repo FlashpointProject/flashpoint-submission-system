@@ -15,8 +15,8 @@ import (
 
 // ensureTestUser inserts a minimal discord user directly via raw SQL (for FK constraints).
 func ensureTestUser(t *testing.T, maria *sql.DB, uid int64) {
-	_, err := maria.Exec(`INSERT IGNORE INTO discord_user (id, username, avatar, discriminator, public_flags, flags, locale, mfa_enabled) VALUES (?, ?, '', '', 0, 0, '', 0)`,
-		uid, fmt.Sprintf("tsuser_%d", uid))
+	_, err := maria.Exec(testSQL(`INSERT IGNORE INTO discord_user (id, username, avatar, discriminator, public_flags, flags, locale, mfa_enabled) VALUES (?, ?, '', '', 0, 0, '', ?)`),
+		uid, fmt.Sprintf("tsuser_%d", uid), false)
 	require.NoError(t, err)
 }
 
@@ -205,7 +205,7 @@ func TestSoftDeletionTimestamps(t *testing.T) {
 
 	// Verify via raw SQL
 	var commentDeletedAt time.Time
-	err = maria.QueryRow("SELECT deleted_at FROM comment WHERE id=?", cid).Scan(&commentDeletedAt)
+	err = maria.QueryRow(testSQL("SELECT deleted_at FROM comment WHERE id=?"), cid).Scan(&commentDeletedAt)
 	require.NoError(t, err)
 	require.WithinDuration(t, beforeDelete, commentDeletedAt, 5*time.Second, "comment deleted_at should be recent")
 
@@ -218,7 +218,7 @@ func TestSoftDeletionTimestamps(t *testing.T) {
 	require.NoError(t, dbs.Commit())
 
 	var fileDeletedAt time.Time
-	err = maria.QueryRow("SELECT deleted_at FROM submission_file WHERE id=?", fid2).Scan(&fileDeletedAt)
+	err = maria.QueryRow(testSQL("SELECT deleted_at FROM submission_file WHERE id=?"), fid2).Scan(&fileDeletedAt)
 	require.NoError(t, err)
 	require.WithinDuration(t, beforeFileDelete, fileDeletedAt, 5*time.Second, "file deleted_at should be recent")
 
@@ -231,13 +231,13 @@ func TestSoftDeletionTimestamps(t *testing.T) {
 	require.NoError(t, dbs.Commit())
 
 	var subDeletedAt time.Time
-	err = maria.QueryRow("SELECT deleted_at FROM submission WHERE id=?", sid).Scan(&subDeletedAt)
+	err = maria.QueryRow(testSQL("SELECT deleted_at FROM submission WHERE id=?"), sid).Scan(&subDeletedAt)
 	require.NoError(t, err)
 	require.WithinDuration(t, beforeSubDelete, subDeletedAt, 5*time.Second, "submission deleted_at should be recent")
 
 	// Remaining file should also be marked deleted
 	var f1DeletedAt time.Time
-	err = maria.QueryRow("SELECT deleted_at FROM submission_file WHERE id=?", fid1).Scan(&f1DeletedAt)
+	err = maria.QueryRow(testSQL("SELECT deleted_at FROM submission_file WHERE id=?"), fid1).Scan(&f1DeletedAt)
 	require.NoError(t, err)
 	require.WithinDuration(t, beforeSubDelete, f1DeletedAt, 5*time.Second)
 }
@@ -264,7 +264,7 @@ func TestFreezeUnfreezeTimestamps(t *testing.T) {
 
 	// Verify frozen_at via raw SQL
 	var frozenAt *time.Time
-	err = maria.QueryRow("SELECT frozen_at FROM submission WHERE id=?", sid).Scan(&frozenAt)
+	err = maria.QueryRow(testSQL("SELECT frozen_at FROM submission WHERE id=?"), sid).Scan(&frozenAt)
 	require.NoError(t, err)
 	require.NotNil(t, frozenAt, "frozen_at should be set")
 	require.WithinDuration(t, beforeFreeze, *frozenAt, 5*time.Second, "frozen_at should be recent")
@@ -278,7 +278,7 @@ func TestFreezeUnfreezeTimestamps(t *testing.T) {
 
 	// Verify frozen_at is NULL
 	var frozenAt2 *time.Time
-	err = maria.QueryRow("SELECT frozen_at FROM submission WHERE id=?", sid).Scan(&frozenAt2)
+	err = maria.QueryRow(testSQL("SELECT frozen_at FROM submission WHERE id=?"), sid).Scan(&frozenAt2)
 	require.NoError(t, err)
 	require.Nil(t, frozenAt2, "frozen_at should be NULL after unfreeze")
 }
@@ -314,7 +314,7 @@ func TestNotificationTimestamps(t *testing.T) {
 
 	// Verify sent_at via raw SQL
 	var sentAt *time.Time
-	err = maria.QueryRow("SELECT sent_at FROM submission_notification WHERE id=?", nid).Scan(&sentAt)
+	err = maria.QueryRow(testSQL("SELECT sent_at FROM submission_notification WHERE id=?"), nid).Scan(&sentAt)
 	require.NoError(t, err)
 	require.NotNil(t, sentAt, "sent_at should be set")
 	require.WithinDuration(t, beforeSend, *sentAt, 5*time.Second, "sent_at should be recent")
@@ -344,7 +344,7 @@ func TestNullTimestampHandling(t *testing.T) {
 
 	// Verify NULLs via raw SQL with *time.Time
 	var deletedAt, frozenAt *time.Time
-	err = maria.QueryRow("SELECT deleted_at, frozen_at FROM submission WHERE id=?", sid).Scan(&deletedAt, &frozenAt)
+	err = maria.QueryRow(testSQL("SELECT deleted_at, frozen_at FROM submission WHERE id=?"), sid).Scan(&deletedAt, &frozenAt)
 	require.NoError(t, err)
 	require.Nil(t, deletedAt, "deleted_at should be NULL for new submission")
 	require.Nil(t, frozenAt, "frozen_at should be NULL for new submission")
@@ -371,7 +371,7 @@ func TestNullTimestampHandling(t *testing.T) {
 
 	// Verify comment's deleted_at is NULL
 	var commentDeletedAt *time.Time
-	err = maria.QueryRow("SELECT deleted_at FROM comment WHERE id=?", cid).Scan(&commentDeletedAt)
+	err = maria.QueryRow(testSQL("SELECT deleted_at FROM comment WHERE id=?"), cid).Scan(&commentDeletedAt)
 	require.NoError(t, err)
 	require.Nil(t, commentDeletedAt, "comment deleted_at should be NULL")
 }

@@ -10,6 +10,9 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 )
 
+// UpdateSubmissionCacheTable requires the caller to own the parent mutation
+// lock before taking its read snapshot (see LockSubmissions). It cannot repair a
+// stale snapshot by locking here, after the history has already been read/written.
 func (d *mysqlDAL) UpdateSubmissionCacheTable(dbs DBSession, sid int64) error {
 	l := utils.LogCtx(dbs.Ctx()).WithField("event", "cache-table-update").WithField("table", "submission_cache")
 	l.Debug("updating submission cache table")
@@ -17,9 +20,9 @@ func (d *mysqlDAL) UpdateSubmissionCacheTable(dbs DBSession, sid int64) error {
 
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		UPDATE submission_cache
-		SET fk_newest_file_id = (SELECT id FROM submission_file WHERE fk_submission_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1),
-		    fk_oldest_file_id = (SELECT id FROM submission_file WHERE fk_submission_id = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1),
-		    fk_newest_comment_id = (SELECT id FROM comment WHERE fk_submission_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1)
+		SET fk_newest_file_id = (SELECT id FROM submission_file WHERE fk_submission_id = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1),
+		    fk_oldest_file_id = (SELECT id FROM submission_file WHERE fk_submission_id = ? AND deleted_at IS NULL ORDER BY created_at ASC, id ASC LIMIT 1),
+		    fk_newest_comment_id = (SELECT id FROM comment WHERE fk_submission_id = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1)
 		
 		WHERE fk_submission_id = ?`,
 		sid, sid, sid, sid)
@@ -129,7 +132,7 @@ func getUserCountWithEnabledAction(dbs DBSession, enablerChunk, disablerChunk st
 						ROW_NUMBER() OVER (
 							PARTITION BY c.fk_submission_id,
 							c.fk_user_id
-							ORDER BY created_at DESC
+							ORDER BY created_at DESC, id DESC
 						) AS rn
 					FROM comment AS c
 					WHERE c.fk_user_id != 810112564787675166
@@ -140,11 +143,12 @@ func getUserCountWithEnabledAction(dbs DBSession, enablerChunk, disablerChunk st
 						)
 						AND c.deleted_at IS NULL
 						AND c.fk_submission_id = %d
-					ORDER BY created_at ASC
+					ORDER BY created_at ASC, id ASC
 				)
 				SELECT ranked_comment.fk_submission_id AS submission_id,
 					ranked_comment.fk_user_id AS author_id,
-					ranked_comment.created_at
+					ranked_comment.created_at,
+					ranked_comment.id
 				FROM ranked_comment
 					LEFT JOIN (SELECT * FROM submission_cache WHERE fk_submission_id = %d) AS submission_cache ON submission_cache.fk_submission_id = ranked_comment.fk_submission_id
 					`+lastFileJoinQuery+`
@@ -157,7 +161,7 @@ func getUserCountWithEnabledAction(dbs DBSession, enablerChunk, disablerChunk st
 						ROW_NUMBER() OVER (
 							PARTITION BY c.fk_submission_id,
 							c.fk_user_id
-							ORDER BY created_at DESC
+							ORDER BY created_at DESC, id DESC
 						) AS rn
 					FROM comment AS c
 					WHERE c.fk_user_id != 810112564787675166
@@ -171,7 +175,8 @@ func getUserCountWithEnabledAction(dbs DBSession, enablerChunk, disablerChunk st
 				)
 				SELECT ranked_comment.fk_submission_id AS submission_id,
 					ranked_comment.fk_user_id AS author_id,
-					ranked_comment.created_at
+					ranked_comment.created_at,
+					ranked_comment.id
 				FROM ranked_comment
 					LEFT JOIN (SELECT * FROM submission_cache WHERE fk_submission_id = %d) AS submission_cache ON submission_cache.fk_submission_id = ranked_comment.fk_submission_id
 					`+lastFileJoinQuery+`
@@ -183,7 +188,9 @@ func getUserCountWithEnabledAction(dbs DBSession, enablerChunk, disablerChunk st
 				(
 					latest_enabler.created_at IS NOT NULL
 					AND latest_disabler.created_at IS NOT NULL
-					AND latest_enabler.created_at > latest_disabler.created_at
+					AND (latest_enabler.created_at > latest_disabler.created_at
+						OR (latest_enabler.created_at = latest_disabler.created_at
+							AND latest_enabler.id > latest_disabler.id))
 				)
 				OR (
 					latest_disabler.created_at IS NULL
@@ -259,7 +266,7 @@ func getBotAction(dbs DBSession, sid int64) (result *string, err error) {
 			SELECT c.*,
 				ROW_NUMBER() OVER (
 					PARTITION BY fk_submission_id
-					ORDER BY created_at DESC
+					ORDER BY created_at DESC, id DESC
 				) AS rn
 			FROM comment AS c
 			WHERE c.fk_user_id = 810112564787675166

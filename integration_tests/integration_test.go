@@ -12,23 +12,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPrintSchema prints the MariaDB schema for all tables with timestamp columns.
+// TestPrintSchema prints the selected submission schema timestamp columns.
 // Modify as needed for debugging.
 func TestPrintSchema(t *testing.T) {
 	_, _, _, _, _, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
 	defer postgres.Close()
 
-	rows, err := maria.Query(`
+	query := `
 		SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 		FROM INFORMATION_SCHEMA.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE()
 		AND (COLUMN_NAME LIKE '%_at' OR COLUMN_NAME LIKE 'date_%')
-		ORDER BY TABLE_NAME, ORDINAL_POSITION`)
+		ORDER BY TABLE_NAME, ORDINAL_POSITION`
+	if postgresSubmissionTests() {
+		query = `SELECT table_name,column_name,data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' AND (column_name LIKE '%_at' OR column_name LIKE 'date_%') ORDER BY table_name,ordinal_position`
+	}
+	rows, err := maria.Query(query)
 	require.NoError(t, err)
 	defer rows.Close()
 
-	t.Log("=== MariaDB Timestamp Columns ===")
+	t.Log("=== Submission Database Timestamp Columns ===")
 	for rows.Next() {
 		var tableName, colName, colType, nullable string
 		var colDefault *string

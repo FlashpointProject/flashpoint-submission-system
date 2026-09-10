@@ -1,0 +1,20 @@
+-- Restore only migration 14 submission-table constraints.
+ALTER TABLE submission_level ADD CONSTRAINT submission_level_name_key UNIQUE (name);
+DROP INDEX idx_submission_level_name_source_unique;
+ALTER TABLE action ADD CONSTRAINT action_name_key UNIQUE (name);
+DROP INDEX idx_action_name_source_unique;
+ALTER TABLE submission_notification_type ADD CONSTRAINT submission_notification_type_name_key UNIQUE (name);
+DROP INDEX idx_submission_notification_type_name_source_unique;
+ALTER TABLE curation_image_type ADD CONSTRAINT curation_image_type_name_key UNIQUE (name);
+DROP INDEX idx_curation_image_type_name_source_unique;
+ALTER TABLE submission_file ADD CONSTRAINT submission_file_current_filename_key UNIQUE (current_filename);
+DROP INDEX idx_submission_file_current_filename_source_unique;
+ALTER TABLE submission_file ADD CONSTRAINT submission_file_md5sum_key UNIQUE (md5sum);
+DROP INDEX idx_submission_file_md5sum_source_unique;
+ALTER TABLE submission_file ADD CONSTRAINT submission_file_sha256sum_key UNIQUE (sha256sum);
+DROP INDEX idx_submission_file_sha256sum_source_unique;
+ALTER TABLE curation_image ADD CONSTRAINT curation_image_filename_key UNIQUE (filename);
+DROP INDEX idx_curation_image_filename_source_unique;
+ALTER TABLE masterdb_game ADD CONSTRAINT masterdb_game_uuid_key UNIQUE (uuid);
+DROP INDEX idx_masterdb_game_uuid_source_unique;
+DROP INDEX idx_oauth_client_id_source_unique;

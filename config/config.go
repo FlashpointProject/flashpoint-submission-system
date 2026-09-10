@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	SubmissionDBEngine            string
 	Port                          int64
 	OauthConf                     *oauth2.Config
 	HostBaseURL                   string
@@ -103,10 +104,30 @@ func EnvJSONList(name string) []string {
 }
 
 func GetConfig(l *logrus.Entry) *Config {
+	engine := os.Getenv("SUBMISSION_DB_ENGINE")
+	if engine == "" {
+		engine = "mariadb"
+	}
+	if engine != "mariadb" && engine != "postgres" {
+		panic("SUBMISSION_DB_ENGINE must be mariadb or postgres")
+	}
+	submissionString := func(name string) string {
+		if engine == "postgres" {
+			return os.Getenv(name)
+		}
+		return EnvString(name)
+	}
+	submissionInt := func(name string) int64 {
+		if engine == "postgres" && os.Getenv(name) == "" {
+			return 0
+		}
+		return EnvInt(name)
+	}
 	const ScopeIdentify = "identify"
 
 	return &Config{
-		Port: EnvInt("PORT"),
+		SubmissionDBEngine: engine,
+		Port:               EnvInt("PORT"),
 		OauthConf: &oauth2.Config{
 			RedirectURL:  EnvString("OAUTH_REDIRECT_URL"),
 			ClientID:     EnvString("OAUTH_CLIENT_ID"),
@@ -127,11 +148,11 @@ func GetConfig(l *logrus.Entry) *Config {
 		SecurecookieBlockKeyCurrent:   EnvString("SECURECOOKIE_BLOCK_KEY_CURRENT"),
 		SessionExpirationSeconds:      EnvInt("SESSION_EXPIRATION_SECONDS"),
 		ValidatorServerURL:            EnvString("VALIDATOR_SERVER_URL"),
-		DBUser:                        EnvString("DB_USER"),
-		DBPassword:                    EnvString("DB_PASSWORD"),
-		DBIP:                          EnvString("DB_IP"),
-		DBPort:                        EnvInt("DB_PORT"),
-		DBName:                        EnvString("DB_NAME"),
+		DBUser:                        submissionString("DB_USER"),
+		DBPassword:                    submissionString("DB_PASSWORD"),
+		DBIP:                          submissionString("DB_IP"),
+		DBPort:                        submissionInt("DB_PORT"),
+		DBName:                        submissionString("DB_NAME"),
 		PostgresUser:                  EnvString("POSTGRES_USER"),
 		PostgresPassword:              EnvString("POSTGRES_PASSWORD"),
 		PostgresHost:                  EnvString("POSTGRES_HOST"),

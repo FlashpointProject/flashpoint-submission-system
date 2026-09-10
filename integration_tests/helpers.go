@@ -7,14 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -320,6 +318,7 @@ var DiscordServerRoles = []types.DiscordRole{
 }
 
 type validatorMockOptions struct {
+	BeforeValidate      func()
 	CurationErrors      []string
 	CurationWarnings    []string
 	CurationErrorsSeq   [][]string
@@ -361,290 +360,6 @@ func defaultValidatorMockMeta() types.CurationMeta {
 		},
 		RuffleSupport: utils.StrPtr("Standalone"),
 	}
-}
-
-func setupTestEnvironment(t *testing.T) {
-	// replace relative paths with absolute paths in env
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	data, err := os.ReadFile("./testenv.env")
-	require.NoError(t, err)
-	data = bytes.ReplaceAll(data, []byte("=./"), []byte("="+cwd+"/"))
-	err = os.WriteFile("./absolute.env", data, 0644)
-	require.NoError(t, err)
-
-	err = godotenv.Overload("./absolute.env")
-	require.NoError(t, err)
-
-	// Create directories
-	dirs := []string{
-		"./test_data/resumable",
-		"./test_data/ingest",
-		"./test_data/submissions",
-		"./test_data/images",
-		"./test_data/datapacks",
-		"./test_data/frozen",
-		"./test_data/images_path",
-		"./test_data/deleted_datapacks",
-		"./test_data/deleted_images",
-		"./test_data/repack_temp",
-	}
-
-	for _, d := range dirs {
-		err := os.MkdirAll(d, 0777)
-		require.NoError(t, err)
-		err = os.Chmod(d, 0o755)
-		require.NoError(t, err)
-	}
-
-	// Create symlinks for templates
-	if _, err := os.Lstat("templates"); os.IsNotExist(err) {
-		err = os.Symlink("../templates", "templates")
-		require.NoError(t, err)
-	}
-}
-
-func runCommand(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func openMariaTestDB(conf *config.Config) (*sql.DB, error) {
-	return sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true&loc=UTC&time_zone=%%27%%2B00%%3A00%%27", conf.DBUser, conf.DBPassword, conf.DBIP, conf.DBPort, conf.DBName))
-}
-
-func openPostgresTestDB(ctx context.Context, conf *config.Config) (*pgxpool.Pool, error) {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", conf.PostgresUser, conf.PostgresPassword, conf.PostgresHost, conf.PostgresPort, conf.PostgresUser)
-	return pgxpool.New(ctx, connStr)
-}
-
-func quoteMySQLIdentifier(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
-}
-
-func quotePostgresIdentifier(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
-}
-
-var preservedMySQLTables = map[string]struct{}{
-	"action":                       {},
-	"curation_image_type":          {},
-	"schema_migrations":            {},
-	"submission_level":             {},
-	"submission_notification_type": {},
-}
-
-var mysqlTableCleanupQueries = map[string]string{
-	"discord_user": fmt.Sprintf(
-		"DELETE FROM discord_user WHERE id NOT IN (%d, %d)",
-		constants.ValidatorID,
-		constants.SystemID,
-	),
-}
-
-func clearExistingMariaTestDB(conf *config.Config) error {
-	db, err := openMariaTestDB(conf)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		return err
-	}
-
-	rows, err := db.QueryContext(ctx, `
-		SELECT TABLE_NAME
-		FROM INFORMATION_SCHEMA.TABLES
-		WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_TYPE = 'BASE TABLE'
-		ORDER BY TABLE_NAME`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	tables := make([]string, 0)
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			return err
-		}
-		tables = append(tables, table)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if len(tables) == 0 {
-		return fmt.Errorf("mysql database has no reusable tables")
-	}
-
-	if _, err := db.ExecContext(ctx, `SET FOREIGN_KEY_CHECKS = 0`); err != nil {
-		return err
-	}
-	defer func() {
-		_, _ = db.ExecContext(context.Background(), `SET FOREIGN_KEY_CHECKS = 1`)
-	}()
-
-	for _, table := range tables {
-		if cleanupQuery, ok := mysqlTableCleanupQueries[table]; ok {
-			if _, err := db.ExecContext(ctx, cleanupQuery); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, ok := preservedMySQLTables[table]; ok {
-			continue
-		}
-		if _, err := db.ExecContext(ctx, fmt.Sprintf("TRUNCATE TABLE %s", quoteMySQLIdentifier(table))); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func clearExistingPostgresTestDB(conf *config.Config) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	pool, err := openPostgresTestDB(ctx, conf)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		return err
-	}
-
-	rows, err := pool.Query(ctx, `
-		SELECT table_name
-		FROM information_schema.tables
-		WHERE table_schema = 'public'
-			AND table_type = 'BASE TABLE'
-			AND table_name <> 'schema_migrations'
-		ORDER BY table_name`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	tables := make([]string, 0)
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			return err
-		}
-		tables = append(tables, table)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	rows.Close()
-	if len(tables) == 0 {
-		return fmt.Errorf("postgres database has no reusable tables")
-	}
-
-	qualifiedTables := make([]string, 0, len(tables))
-	for _, table := range tables {
-		qualifiedTables = append(qualifiedTables, quotePostgresIdentifier("public")+"."+quotePostgresIdentifier(table))
-	}
-
-	_, err = pool.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", strings.Join(qualifiedTables, ", ")))
-	return err
-}
-
-func reuseExistingTestDatabases(conf *config.Config) error {
-	if err := clearExistingMariaTestDB(conf); err != nil {
-		return err
-	}
-	if err := clearExistingPostgresTestDB(conf); err != nil {
-		return err
-	}
-	return nil
-}
-
-func waitForTestDatabases(t *testing.T, conf *config.Config) {
-	t.Helper()
-
-	fmt.Println("waiting for databases to come online")
-	timeout := time.After(60 * time.Second)
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	mysqlReady := false
-	postgresReady := false
-
-	for !mysqlReady || !postgresReady {
-		select {
-		case <-timeout:
-			require.Fail(t, "timed out waiting for databases to be ready")
-		case <-ticker.C:
-			if !mysqlReady {
-				db, err := openMariaTestDB(conf)
-				if err == nil {
-					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-					if err := db.PingContext(ctx); err == nil {
-						mysqlReady = true
-						fmt.Println("mysql ready")
-					}
-					cancel()
-					db.Close()
-				}
-			}
-			if !postgresReady {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				pool, err := openPostgresTestDB(ctx, conf)
-				if err == nil {
-					if err := pool.Ping(ctx); err == nil {
-						postgresReady = true
-						fmt.Println("postgres ready")
-					}
-					pool.Close()
-				}
-				cancel()
-			}
-		}
-	}
-}
-
-func recreateTestDatabases(t *testing.T) {
-	t.Helper()
-
-	fmt.Println("setting up databases...")
-	conf := config.GetConfig(nil)
-
-	if err := reuseExistingTestDatabases(conf); err == nil {
-		fmt.Println("reusing existing databases without running migrations")
-		fmt.Println("databases OK")
-		return
-	} else {
-		fmt.Printf("existing databases unavailable, rebuilding from scratch: %v\n", err)
-	}
-
-	// Start DBs
-	fmt.Println("rebuilding...")
-	err := runCommand("make", "rebuild-db")
-	require.NoError(t, err, "failed to rebuild mysql")
-
-	// Wait for DBs to be ready
-	waitForTestDatabases(t, conf)
-
-	// Run migrations
-	fmt.Println("running migrations")
-	err = runCommand("make", "migrate")
-	require.NoError(t, err, "failed to run migrations")
-
-	fmt.Println("databases OK")
 }
 
 func createTestUser(t *testing.T, ctx context.Context, l *logrus.Entry, app *transport.App, db database.DAL, pgdb database.PGDAL, uid int64, roles []int64) *service.AuthToken {
@@ -795,7 +510,7 @@ func uploadTestSubmission(t *testing.T, l *logrus.Entry, app *transport.App, fil
 	for !done {
 		select {
 		case <-timeout:
-			require.Fail(t, "timeout waiting for submission processing")
+			require.FailNow(t, "timeout waiting for submission processing")
 		case <-ticker.C:
 			status := app.Service.SSK.Get(tempName)
 			if status != nil {
@@ -872,6 +587,9 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 			return
 		}
 
+		if validatorOptions.BeforeValidate != nil {
+			validatorOptions.BeforeValidate()
+		}
 		l.Infof("Mock: Handling default")
 
 		responseIndex := int(validatorResponseCounter.Add(1) - 1)
@@ -898,8 +616,8 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 			meta = *validatorOptions.UploadMeta
 		}
 		resp := types.ValidatorResponse{
-			Path: path,
-			Meta: meta,
+			Path:             path,
+			Meta:             meta,
 			CurationErrors:   curationErrors,
 			CurationWarnings: curationWarnings,
 			Images: []types.ValidatorResponseImage{
@@ -909,8 +627,7 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
-	// We don't defer Close() here because app lives longer than this function scope,
-	// but for tests it's fine as it will die with the process. Ideally we return a cleanup func.
+	t.Cleanup(validatorMock.Close)
 	conf.ValidatorServerURL = validatorMock.URL
 
 	// Create ResumableUploadService
@@ -957,8 +674,8 @@ func setupIntegrationTestWithValidatorMockOptions(t *testing.T, validatorOptions
 	ctx := context.Background()
 
 	fmt.Println("setting up environment...")
-	setupTestEnvironment(t)
-	recreateTestDatabases(t)
+	repoRoot := setupTestEnvironment(t)
+	resetTestDatabases(t, repoRoot)
 
 	fmt.Println("init logger...")
 	log := logging.InitLogger()
@@ -968,8 +685,10 @@ func setupIntegrationTestWithValidatorMockOptions(t *testing.T, validatorOptions
 	// Connect to DB
 	maria := database.OpenDB(l, conf)
 	postgres := database.OpenPostgresDB(l, conf)
+	t.Cleanup(func() { _ = maria.Close() })
+	t.Cleanup(postgres.Close)
 
-	db := database.NewMysqlDAL(maria)
+	db := database.NewSubmissionDAL(maria)
 	pgdb := database.NewPostgresDAL(postgres)
 
 	app := initTestAppWithValidatorMockOptions(t, l, conf, maria, postgres, validatorOptions)

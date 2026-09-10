@@ -92,6 +92,19 @@ To verify your local changes in the [launcher](https://github.com/FlashpointProj
 
 Mirroring Flashpoint's game data in your FPFSS requires to export a JSON from the launcher's "Export Database" option in the Developer tab, then importing it in the site's "Dev Tools" section. Memory size errors when exporting the db may require to use a dev version of the launcher.
 
+### Tests
+
+Run the integration suite in an isolated, disposable Docker Compose environment:
+
+```sh
+bash integration_tests/run.sh
+```
+
+No local databases, Go installation, production dumps or external submission files
+are needed. See [integration test instructions](integration_tests/README.md) for
+focused runs, artifacts and isolation details. The migration/coverage roadmap is
+in [database-unification.md](database-unification.md).
+
 # TODO
 
 - Add tests, this needs some priority!

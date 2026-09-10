@@ -1,0 +1,21 @@
+-- Only tables introduced by migration 14; never cascade into existing data.
+DROP TABLE submission_creation_lock;
+DROP TABLE oauth_client;
+DROP TABLE masterdb_game;
+DROP TABLE submission_cache;
+DROP TABLE curation_image;
+DROP TABLE curation_image_type;
+DROP TABLE submission_notification;
+DROP TABLE submission_notification_type;
+DROP TABLE submission_notification_subscription;
+DROP TABLE notification_settings;
+DROP TABLE comment;
+DROP TABLE action;
+DROP TABLE curation_meta;
+DROP TABLE submission_file;
+DROP TABLE submission;
+DROP TABLE submission_level;
+DROP TABLE discord_user_role;
+DROP TABLE discord_role;
+DROP TABLE discord_user;
+DROP TABLE session;

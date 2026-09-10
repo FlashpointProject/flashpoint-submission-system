@@ -3,9 +3,11 @@ package integration_tests
 import (
 	"context"
 	"fmt"
+	"github.com/FlashpointProject/flashpoint-submission-system/database"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/logging"
@@ -111,6 +113,13 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.True(t, isUserSubscribed(t, ctx, app, tester.ID, sid))
 
+		var pairs int
+		require.NoError(t, maria.QueryRow(testSQL("SELECT COUNT(*) FROM submission_notification_subscription WHERE fk_user_id=? AND fk_submission_id=?"), tester.ID, sid).Scan(&pairs))
+		if postgresSubmissionTests() {
+			require.Equal(t, 1, pairs, "PostgreSQL repeated subscribe must not duplicate the pair")
+		} else {
+			require.Equal(t, 2, pairs, "MariaDB baseline reproduces repeated-subscribe duplicates")
+		}
 		// Unsubscribe twice
 		rr = updateSubscription(t, l, app, tester.Cookie, sid, false)
 		require.Equal(t, http.StatusOK, rr.Code)
@@ -126,4 +135,68 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 		require.True(t, isUserSubscribed(t, ctx, app, trialCurator.ID, sid), "trial curator should be able to subscribe")
 	})
+}
+
+// Simultaneous explicit subscriptions must retain one PostgreSQL pair without
+// changing recipient selection. MariaDB's duplicate source behavior is retained
+// as a before-migration witness, rather than silently asserted as desired.
+func TestConcurrentSubscriptionPair(t *testing.T) {
+	f := newSQLFixture(t)
+	f.User(t, 11, "subscriber")
+	f.Submission(t, 101, "staff")
+	f.InTx(t, func(s database.DBSession) {
+		require.NoError(t, f.DB.StoreNotificationSettings(s, 11, []string{constants.ActionApprove}))
+	})
+	ctx, cancel := context.WithTimeout(f.Ctx, 15*time.Second)
+	defer cancel()
+	ready := make(chan struct{}, 2)
+	release := make(chan struct{})
+	results := make(chan error, 2)
+	for range 2 {
+		go func() {
+			s, err := f.DB.NewSession(ctx)
+			ready <- struct{}{}
+			if err != nil {
+				results <- err
+				return
+			}
+			defer s.Rollback()
+			select {
+			case <-release:
+			case <-ctx.Done():
+				results <- ctx.Err()
+				return
+			}
+			if err = f.DB.SubscribeUserToSubmission(s, 11, 101); err == nil {
+				err = s.Commit()
+			}
+			results <- err
+		}()
+	}
+	for range 2 {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	close(release)
+	for range 2 {
+		require.NoError(t, <-results)
+	}
+	var pairs int
+	require.NoError(t, f.Maria.QueryRow(testSQL("SELECT COUNT(*) FROM submission_notification_subscription WHERE fk_user_id=? AND fk_submission_id=?"), 11, 101).Scan(&pairs))
+	if postgresSubmissionTests() {
+		require.Equal(t, 1, pairs)
+	} else {
+		require.Equal(t, 2, pairs)
+	}
+	f.InTx(t, func(s database.DBSession) {
+		recipients, err := f.DB.GetUsersForNotification(s, 99, 101, constants.ActionApprove)
+		require.NoError(t, err)
+		require.Equal(t, []int64{11}, recipients)
+		require.NoError(t, f.DB.UnsubscribeUserFromSubmission(s, 11, 101))
+	})
+	require.NoError(t, f.Maria.QueryRow("SELECT COUNT(*) FROM submission_notification_subscription").Scan(&pairs))
+	require.Zero(t, pairs)
 }

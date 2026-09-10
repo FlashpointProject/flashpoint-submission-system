@@ -1,0 +1,4 @@
+DROP INDEX idx_submission_legacy_platform_search;
+DROP INDEX idx_submission_meta_platform_search;
+DROP STATISTICS stats_submission_cache_ready_for_fp;
+DROP INDEX idx_submission_cache_ready_for_fp;

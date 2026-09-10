@@ -1,7 +1,6 @@
 package database
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +30,13 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 	currentSortOrder := defaultSortOrder
 
 	if filter != nil {
+		// Validate a copy: direct DAL callers need the same guarantees as HTTP
+		// callers, without normalizing the caller's filter in place.
+		normalized := *filter
+		if err := normalized.Validate(); err != nil {
+			return nil, 0, err
+		}
+		filter = &normalized
 		if len(filter.SubmissionIDs) > 0 {
 			filters = append(filters, `(submission.id IN(?`+strings.Repeat(`,?`, len(filter.SubmissionIDs)-1)+`))`)
 			for _, sid := range filter.SubmissionIDs {
@@ -154,93 +160,93 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		}
 		if filter.AssignedStatusTestingMe != nil {
 			if *filter.AssignedStatusTestingMe == "unassigned" {
-				filters = append(filters, "(submission_cache.active_assigned_testing_ids NOT LIKE ? OR submission_cache.active_assigned_testing_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_assigned_testing_ids), 0) = 0)")
 			} else if *filter.AssignedStatusTestingMe == "assigned" {
-				filters = append(filters, "(submission_cache.active_assigned_testing_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_assigned_testing_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", uid)))
+			data = append(data, strconv.FormatInt(uid, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.AssignedStatusVerificationMe != nil {
 			if *filter.AssignedStatusVerificationMe == "unassigned" {
-				filters = append(filters, "(submission_cache.active_assigned_verification_ids NOT LIKE ? OR submission_cache.active_assigned_verification_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_assigned_verification_ids), 0) = 0)")
 			} else if *filter.AssignedStatusVerificationMe == "assigned" {
-				filters = append(filters, "(submission_cache.active_assigned_verification_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_assigned_verification_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", uid)))
+			data = append(data, strconv.FormatInt(uid, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.RequestedChangedStatusMe != nil {
 			if *filter.RequestedChangedStatusMe == "none" {
-				filters = append(filters, "(submission_cache.active_requested_changes_ids NOT LIKE ? OR submission_cache.active_requested_changes_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_requested_changes_ids), 0) = 0)")
 			} else if *filter.RequestedChangedStatusMe == "ongoing" {
-				filters = append(filters, "(submission_cache.active_requested_changes_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_requested_changes_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", uid)))
+			data = append(data, strconv.FormatInt(uid, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.ApprovalsStatusMe != nil {
 			if *filter.ApprovalsStatusMe == "no" {
-				filters = append(filters, "(submission_cache.active_approved_ids NOT LIKE ? OR submission_cache.active_approved_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_approved_ids), 0) = 0)")
 			} else if *filter.ApprovalsStatusMe == "yes" {
-				filters = append(filters, "(submission_cache.active_approved_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_approved_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", uid)))
+			data = append(data, strconv.FormatInt(uid, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.VerificationStatusMe != nil {
 			if *filter.VerificationStatusMe == "no" {
-				filters = append(filters, "(submission_cache.active_verified_ids NOT LIKE ? OR submission_cache.active_verified_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_verified_ids), 0) = 0)")
 			} else if *filter.VerificationStatusMe == "yes" {
-				filters = append(filters, "(submission_cache.active_verified_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_verified_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", uid)))
+			data = append(data, strconv.FormatInt(uid, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 
 		if filter.AssignedStatusTestingUser != nil {
 			if *filter.AssignedStatusTestingUser == "unassigned" {
-				filters = append(filters, "(submission_cache.active_assigned_testing_ids NOT LIKE ? OR submission_cache.active_assigned_testing_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_assigned_testing_ids), 0) = 0)")
 			} else if *filter.AssignedStatusTestingUser == "assigned" {
-				filters = append(filters, "(submission_cache.active_assigned_testing_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_assigned_testing_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", *filter.AssignedStatusUserID)))
+			data = append(data, strconv.FormatInt(*filter.AssignedStatusUserID, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.AssignedStatusVerificationUser != nil {
 			if *filter.AssignedStatusVerificationUser == "unassigned" {
-				filters = append(filters, "(submission_cache.active_assigned_verification_ids NOT LIKE ? OR submission_cache.active_assigned_verification_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_assigned_verification_ids), 0) = 0)")
 			} else if *filter.AssignedStatusVerificationUser == "assigned" {
-				filters = append(filters, "(submission_cache.active_assigned_verification_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_assigned_verification_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", *filter.AssignedStatusUserID)))
+			data = append(data, strconv.FormatInt(*filter.AssignedStatusUserID, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.RequestedChangedStatusUser != nil {
 			if *filter.RequestedChangedStatusUser == "none" {
-				filters = append(filters, "(submission_cache.active_requested_changes_ids NOT LIKE ? OR submission_cache.active_requested_changes_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_requested_changes_ids), 0) = 0)")
 			} else if *filter.RequestedChangedStatusUser == "ongoing" {
-				filters = append(filters, "(submission_cache.active_requested_changes_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_requested_changes_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", *filter.AssignedStatusUserID)))
+			data = append(data, strconv.FormatInt(*filter.AssignedStatusUserID, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.ApprovalsStatusUser != nil {
 			if *filter.ApprovalsStatusUser == "no" {
-				filters = append(filters, "(submission_cache.active_approved_ids NOT LIKE ? OR submission_cache.active_approved_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_approved_ids), 0) = 0)")
 			} else if *filter.ApprovalsStatusUser == "yes" {
-				filters = append(filters, "(submission_cache.active_approved_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_approved_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", *filter.AssignedStatusUserID)))
+			data = append(data, strconv.FormatInt(*filter.AssignedStatusUserID, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.VerificationStatusUser != nil {
 			if *filter.VerificationStatusUser == "no" {
-				filters = append(filters, "(submission_cache.active_verified_ids NOT LIKE ? OR submission_cache.active_verified_ids IS NULL)")
+				filters = append(filters, "(COALESCE(FIND_IN_SET(?, submission_cache.active_verified_ids), 0) = 0)")
 			} else if *filter.VerificationStatusUser == "yes" {
-				filters = append(filters, "(submission_cache.active_verified_ids LIKE ?)")
+				filters = append(filters, "(FIND_IN_SET(?, submission_cache.active_verified_ids) > 0)")
 			}
-			data = append(data, utils.FormatLike(fmt.Sprintf("%d", *filter.AssignedStatusUserID)))
+			data = append(data, strconv.FormatInt(*filter.AssignedStatusUserID, 10))
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 
@@ -272,7 +278,7 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		}
 		if filter.LastUploaderNotMe != nil {
 			if *filter.LastUploaderNotMe == "yes" {
-				filters = append(filters, "(uploader.id != ?)")
+				filters = append(filters, "(newest_file.fk_user_id != ?)")
 				data = append(data, uid)
 			}
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
@@ -295,7 +301,9 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		}
 		if filter.SubscribedMe != nil {
 			if *filter.SubscribedMe == "yes" {
-				filters = append(filters, "(sns.fk_user_id = ?)")
+				filters = append(filters, "EXISTS (SELECT 1 FROM submission_notification_subscription sns WHERE sns.fk_submission_id = submission.id AND sns.fk_user_id = ?)")
+			} else {
+				filters = append(filters, "NOT EXISTS (SELECT 1 FROM submission_notification_subscription sns WHERE sns.fk_submission_id = submission.id AND sns.fk_user_id = ?)")
 			}
 			data = append(data, uid)
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
@@ -309,6 +317,7 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.IsContentChange != nil {
+			masterFilters = append(masterFilters, "(1 = 0)") // content-change applies to submissions only
 			if *filter.IsContentChange == "yes" {
 				filters = append(filters, "(meta.game_exists = true)")
 			} else {
@@ -372,7 +381,8 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		submission_cache.distinct_actions AS distinct_actions,
 		meta.game_exists AS meta_game_exists,
 		submission.frozen_at as frozen_at,
-		submission.should_autofreeze as should_autofreeze
+		submission.should_autofreeze as should_autofreeze,
+        NULL AS game_uuid
 		FROM submission
 		LEFT JOIN submission_cache ON submission_cache.fk_submission_id = submission.id
 		LEFT JOIN submission_file AS oldest_file ON oldest_file.id = submission_cache.fk_oldest_file_id
@@ -388,10 +398,9 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		LEFT JOIN discord_user updater ON newest_comment.fk_user_id = updater.id
 		LEFT JOIN curation_meta meta ON meta.fk_submission_file_id = newest_file.id`
 
-	rest := ` LEFT JOIN submission_notification_subscription AS sns ON sns.fk_submission_id = submission.id
-		WHERE submission.deleted_at IS NULL` + and + strings.Join(filters, " AND ") + `
+	rest := ` WHERE submission.deleted_at IS NULL` + and + strings.Join(filters, " AND ") + `
 		GROUP BY submission.id
-		UNION
+		UNION ALL
 			SELECT -1 AS submission_id,
 			(SELECT "legacy") AS submission_level,
 			(SELECT -1) AS uploader_id,
@@ -423,10 +432,11 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			(SELECT "mark-added") AS distinct_actions,
 			(SELECT TRUE) as meta_game_exists,
 			(SELECT NULL) as frozen_at,
-			(SELECT FALSE) as should_autofreeze
+			(SELECT FALSE) as should_autofreeze,
+            uuid AS game_uuid
 			FROM masterdb_game
 			WHERE (SELECT 1) ` + masterAnd + strings.Join(masterFilters, " AND ") + `
-		ORDER BY ` + currentOrderBy + ` ` + currentSortOrder + `
+		ORDER BY ` + currentOrderBy + ` ` + currentSortOrder + `, submission_id ASC, game_uuid ASC
 		`
 	unlimitedQuery := finalQuery + rest
 	finalQuery = unlimitedQuery + ` LIMIT ? OFFSET ?`
@@ -480,7 +490,7 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			&s.BotAction,
 			&s.FileCount,
 			&assignedTestingUserIDs, &assignedVerificationUserIDs, &requestedChangesUserIDs, &approvedUserIDs, &verifiedUserIDs,
-			&distinctActions, &s.GameExists, &frozenAt, &s.ShouldAutofreeze); err != nil {
+			&distinctActions, &s.GameExists, &frozenAt, &s.ShouldAutofreeze, &s.GameUUID); err != nil {
 			return nil, 0, err
 		}
 		s.SubmitterAvatarURL = utils.FormatAvatarURL(s.SubmitterID, submitterAvatar)

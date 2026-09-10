@@ -1377,7 +1377,7 @@ func (a *App) HandleMySubmissionsPage(w http.ResponseWriter, r *http.Request) {
 
 	if err := filter.Validate(); err != nil {
 		utils.LogCtx(ctx).Error(err)
-		writeError(ctx, w, err)
+		writeError(ctx, w, perr(err.Error(), http.StatusBadRequest))
 		return
 	}
 
@@ -1778,8 +1778,14 @@ func (a *App) HandleRecomputeSubmissionCacheAll(w http.ResponseWriter, r *http.R
 	}
 
 	go func() {
-		a.Service.RecomputeSubmissionCacheAll(context.WithValue(context.Background(), utils.CtxKeys.Log, utils.LogCtx(ctx)))
-		<-recomputeSubmissionCacheAllGuard
+		defer func() { <-recomputeSubmissionCacheAllGuard }()
+		result, err := a.Service.RecomputeSubmissionCacheAll(context.WithValue(context.Background(), utils.CtxKeys.Log, utils.LogCtx(ctx)))
+		log := utils.LogCtx(ctx).WithField("recomputedCount", result.Recomputed).WithField("lastSubmissionID", result.LastSubmissionID)
+		if err != nil {
+			log.WithError(err).Error("submission cache rebuild failed")
+			return
+		}
+		log.Info("submission cache rebuild completed")
 	}()
 
 	writeResponse(ctx, w, presp("starting recompute submission cache all", http.StatusOK), http.StatusOK)
