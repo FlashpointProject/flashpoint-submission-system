@@ -925,12 +925,17 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 	}
 	defer dbs.Rollback()
 
-	pgdbs, err := s.pgdal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return dberr(err)
+	var pgdbs database.PGDBSession
+	openPGSession := func() (database.PGDBSession, error) {
+		var err error
+		pgdbs, err = s.pgdal.NewSession(ctx)
+		return pgdbs, err
 	}
-	defer pgdbs.Rollback()
+	defer func() {
+		if pgdbs != nil {
+			pgdbs.Rollback()
+		}
+	}()
 
 	filter := &types.SubmissionsFilter{
 		SubmissionIDs: []int64{sid},
@@ -992,10 +997,13 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 		submissionLevel = constants.SubmissionLevelStaff
 	}
 
-	err = s.processEditedMetaSubmission(ctx, dbs, pgdbs, *newFilePath, stat.Size(), uid, sub.SubmissionID, submissionLevel)
+	err = s.processEditedMetaSubmission(ctx, dbs, openPGSession, *newFilePath, stat.Size(), uid, sub.SubmissionID, submissionLevel)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
+	}
+	if pgdbs == nil {
+		return fmt.Errorf("PostgreSQL session was not opened while editing submission")
 	}
 
 	if err := s.dal.UpdateSubmissionCacheTable(dbs, sid); err != nil {
@@ -1003,6 +1011,10 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 		return dberr(err)
 	}
 
+	if err := pgdbs.Commit(); err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return dberr(err)
+	}
 	err = dbs.Commit()
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -1013,19 +1025,18 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 }
 
 func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid int64) (*types.ViewSubmissionPageData, error) {
+	// Tags enrich the page, but a stalled validator must not hold database transactions.
+	tagList, err := s.validator.GetTags(ctx)
+	if err != nil {
+		tagList = nil
+	}
+
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
 	}
 	defer dbs.Rollback()
-
-	pgdbs, err := s.pgdal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	defer pgdbs.Rollback()
 
 	bpd, err := s.GetBasePageData(ctx)
 	if err != nil {
@@ -1099,11 +1110,6 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 		}
 	} else {
 		prevSID = &psid
-	}
-
-	tagList, err := s.validator.GetTags(ctx)
-	if err != nil {
-		return nil, err
 	}
 
 	pageData := &types.ViewSubmissionPageData{
@@ -2233,13 +2239,17 @@ func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, ui
 	}
 	defer dbs.Rollback()
 
-	pgdbs, err := s.pgdal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		s.SSK.SetFailed(tempName, "internal error")
-		return dberr(err)
+	var pgdbs database.PGDBSession
+	openPGSession := func() (database.PGDBSession, error) {
+		var err error
+		pgdbs, err = s.pgdal.NewSession(ctx)
+		return pgdbs, err
 	}
-	defer pgdbs.Rollback()
+	defer func() {
+		if pgdbs != nil {
+			pgdbs.Rollback()
+		}
+	}()
 
 	userRoles, err := s.dal.GetDiscordUserRoles(dbs, uid)
 	if err != nil {
@@ -2265,13 +2275,18 @@ func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, ui
 	}
 
 	ru := newResumableUpload(uid, resumableParams.ResumableIdentifier, resumableParams.ResumableTotalChunks, s.resumableUploadService)
-	destinationFilename, ifp, submissionID, err := s.processReceivedSubmission(ctx, dbs, pgdbs, ru, resumableParams.ResumableFilename, resumableParams.ResumableTotalSize, sid, submissionLevel, tempName)
+	destinationFilename, ifp, submissionID, err := s.processReceivedSubmission(ctx, dbs, openPGSession, ru, resumableParams.ResumableFilename, resumableParams.ResumableTotalSize, sid, submissionLevel, tempName)
 
 	imageFilePaths = append(imageFilePaths, ifp...)
 
 	if err != nil {
 		cleanup()
 		return err
+	}
+	if pgdbs == nil {
+		s.SSK.SetFailed(tempName, "internal error")
+		cleanup()
+		return fmt.Errorf("PostgreSQL session was not opened while processing submission")
 	}
 
 	if err := pgdbs.Commit(); err != nil {
@@ -3079,17 +3094,17 @@ func (s *SiteService) GetUserStatistics(ctx context.Context, uid int64) (*types.
 }
 
 func (s *SiteService) DeveloperTagDescFromValidator(ctx context.Context) error {
+	tagsList, err := s.validator.GetTags(ctx)
+	if err != nil {
+		return err
+	}
+
 	dbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
 	defer dbs.Rollback()
-
-	tagsList, err := s.validator.GetTags(ctx)
-	if err != nil {
-		return err
-	}
 
 	err = s.pgdal.UpdateTagsFromTagsList(dbs, tagsList)
 	if err != nil {
@@ -3114,10 +3129,6 @@ func (s *SiteService) DeveloperImportDatabaseJson(ctx context.Context, data *typ
 
 	err = s.pgdal.DeveloperImportDatabaseJson(dbs, data)
 	if err != nil {
-		dbs.Rollback()
-		dbs, err := s.pgdal.NewSession(ctx)
-		// Enable triggers
-		_, err = dbs.Tx().Exec(dbs.Ctx(), `SET session_replication_role = DEFAULT`)
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
@@ -3127,14 +3138,6 @@ func (s *SiteService) DeveloperImportDatabaseJson(ctx context.Context, data *typ
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
-	dbs, err = s.pgdal.NewSession(ctx)
-	// Enable triggers
-	_, err = dbs.Tx().Exec(dbs.Ctx(), `SET session_replication_role = DEFAULT`)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return dberr(err)
-	}
-
 	utils.LogCtx(ctx).Debug("commited database import")
 
 	return nil
@@ -3304,7 +3307,7 @@ func (s *SiteService) GetGameCountSinceDate(ctx context.Context, modifiedAfter *
 	dbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
-		return 0, nil
+		return 0, dberr(err)
 	}
 	defer dbs.Rollback()
 
@@ -3335,16 +3338,9 @@ func (s *SiteService) GetGamesPageData(ctx context.Context, modifierAfter *strin
 
 func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission *types.ExtendedSubmission, subDirFullPath string,
 	dataPacksDir string, frozenPacksDir string, imagesDir string, r *http.Request) (*string, error) {
-	// Lock the database for sequential write
+	// Serialize repacking and the metadata write.
 	utils.MetadataMutex.Lock()
 	defer utils.MetadataMutex.Unlock()
-
-	dbs, err := s.pgdal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	defer dbs.Rollback()
 
 	sfs, err := s.GetSubmissionFiles(ctx, []int64{submission.FileID})
 	if err != nil {
@@ -3362,6 +3358,13 @@ func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission 
 		return nil, types.RepackError(*vr.Error)
 	}
 	defer RemoveRepackFolder(ctx, *vr.FilePath)
+
+	dbs, err := s.pgdal.NewSession(ctx)
+	if err != nil {
+		utils.LogCtx(ctx).Error(err)
+		return nil, dberr(err)
+	}
+	defer dbs.Rollback()
 
 	// If UUID is given, check if game exists already
 	var game *types.Game
@@ -3625,6 +3628,7 @@ func (s *SiteService) FreezeGame(ctx context.Context, gameId string, uid int64, 
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
+	defer dbs.Rollback()
 
 	game, err := s.pgdal.GetGame(dbs, gameId)
 	if err != nil {
@@ -3677,7 +3681,7 @@ func (s *SiteService) FreezeGame(ctx context.Context, gameId string, uid int64, 
 		}
 	}
 
-	return err
+	return dbs.Commit()
 }
 
 func (s *SiteService) UnfreezeGame(ctx context.Context, gameId string, uid int64, dataPacksPath string,
@@ -3687,6 +3691,7 @@ func (s *SiteService) UnfreezeGame(ctx context.Context, gameId string, uid int64
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
+	defer dbs.Rollback()
 
 	game, err := s.pgdal.GetGame(dbs, gameId)
 	if err != nil {
@@ -3739,7 +3744,7 @@ func (s *SiteService) UnfreezeGame(ctx context.Context, gameId string, uid int64
 		}
 	}
 
-	return err
+	return dbs.Commit()
 }
 
 func (s *SiteService) GetGameRedirectsPageData(ctx context.Context) (*types.GameRedirectsPageData, error) {
@@ -3777,6 +3782,7 @@ func (s *SiteService) AddNewGameRedirect(ctx context.Context, srcId string, dest
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
+	defer dbs.Rollback()
 
 	err = s.pgdal.AddGameRedirect(dbs, srcId, destId)
 	if err != nil {

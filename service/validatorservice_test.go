@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -14,6 +15,18 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCurationValidatorGetTagsHonorsContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := NewValidator(server.URL).getTags(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
 
 type gatedMultipartFile struct {
 	*bytes.Reader

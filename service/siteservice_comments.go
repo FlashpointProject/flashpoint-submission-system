@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
+	"github.com/FlashpointProject/flashpoint-submission-system/database"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 )
@@ -20,12 +21,12 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 	}
 	defer dbs.Rollback()
 
-	pgdbs, err := s.pgdal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return dberr(err)
-	}
-	defer pgdbs.Rollback()
+	var pgdbs database.PGDBSession
+	defer func() {
+		if pgdbs != nil {
+			pgdbs.Rollback()
+		}
+	}()
 
 	var message *string
 	if formMessage != "" {
@@ -114,6 +115,13 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 			}
 			addedMessage := fmt.Sprintf("Marked the submission as added to Flashpoint. Game ID: %s", *gameId)
 			message = &addedMessage
+		}
+		if pgdbs == nil {
+			pgdbs, err = s.pgdal.NewSession(ctx)
+			if err != nil {
+				utils.LogCtx(ctx).Error(err)
+				return dberr(err)
+			}
 		}
 
 		// actually store the comment
@@ -250,9 +258,11 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 		commentCounter++
 	}
 
-	if err := pgdbs.Commit(); err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return dberr(err)
+	if pgdbs != nil {
+		if err := pgdbs.Commit(); err != nil {
+			utils.LogCtx(ctx).Error(err)
+			return dberr(err)
+		}
 	}
 	if err := dbs.Commit(); err != nil {
 		utils.LogCtx(ctx).Error(err)

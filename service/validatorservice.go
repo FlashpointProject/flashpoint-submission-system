@@ -222,14 +222,22 @@ func (c *curationValidator) GetTags(ctx context.Context) ([]types.Tag, error) {
 }
 
 func (c *curationValidator) getTags(ctx context.Context) ([]types.Tag, error) {
-	resp, err := utils.GetURL(c.validatorServerURL + "/tags")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.validatorServerURL+"/tags", nil)
 	if err != nil {
 		return nil, err
 	}
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("validator tags returned HTTP %d", resp.StatusCode)
+	}
 
 	var tr types.ValidatorTagResponse
-	err = json.Unmarshal(resp, &tr)
-	if err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
 		return nil, err
 	}
 

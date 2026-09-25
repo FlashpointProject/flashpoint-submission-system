@@ -26,7 +26,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, filename string, filesize int64, uid int64, sid int64, submissionLevel string) error {
+func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs database.DBSession, openPGSession func() (database.PGDBSession, error), filename string, filesize int64, uid int64, sid int64, submissionLevel string) error {
 	imageFilePaths := make([]string, 0)
 
 	cleanup := func() {
@@ -72,6 +72,10 @@ func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs datab
 					return fmt.Errorf("validator bot: %s", curError)
 				}
 			}
+		}
+		pgdbs, err := openPGSession()
+		if err != nil {
+			return dberr(err)
 		}
 
 		md5sum := md5.New()
@@ -388,7 +392,7 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 	return &imageFilePaths, nil
 }
 
-func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs database.DBSession, pgdbs database.PGDBSession, fileReadCloserProvider resumableuploadservice.ReadCloserInformerProvider, filename string, filesize int64, sid *int64, submissionLevel string, tempName string) (*string, []string, int64, error) {
+func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs database.DBSession, openPGSession func() (database.PGDBSession, error), fileReadCloserProvider resumableuploadservice.ReadCloserInformerProvider, filename string, filesize int64, sid *int64, submissionLevel string, tempName string) (*string, []string, int64, error) {
 	uid := utils.UserID(ctx)
 	if uid == 0 {
 		s.SSK.SetFailed(tempName, "internal error")
@@ -493,6 +497,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 	s.SSK.SetValidating(tempName)
 	var vr *types.ValidatorResponse
 	var msg *string
+	var pgdbs database.PGDBSession
 
 	err = func() error {
 		utils.LogCtx(ctx).Debug("sending the submission for validation...")
@@ -517,6 +522,11 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 					return perr(fmt.Sprintf("validator bot: %s", curError), http.StatusBadRequest)
 				}
 			}
+		}
+		pgdbs, err = openPGSession()
+		if err != nil {
+			utils.LogCtx(ctx).Error(err)
+			return dberr(err)
 		}
 
 		// Check if game exists
