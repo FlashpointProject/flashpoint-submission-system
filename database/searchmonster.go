@@ -3,7 +3,6 @@ package database
 import (
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
@@ -345,6 +344,38 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		masterAnd = " AND "
 	}
 
+	// A count only needs joins referenced by predicates. The page still needs
+	// every display join. LEFT joins cannot remove a submission; DISTINCT
+	// below preserves one row per parent even when a joined key is duplicated.
+	predicates := strings.Join(filters, " AND ")
+	needMeta := strings.Contains(predicates, "meta.")
+	needUploader := strings.Contains(predicates, "uploader.")
+	needUpdater := strings.Contains(predicates, "updater.")
+	needNewestFile := needMeta || strings.Contains(predicates, "newest_file.")
+	needOldestFile := needUploader || strings.Contains(predicates, "oldest_file.")
+	needComment := needUpdater || strings.Contains(predicates, "newest_comment.")
+	needCache := needNewestFile || needOldestFile || needComment || strings.Contains(predicates, "submission_cache.")
+	submissionFrom, countFrom := " FROM submission", " FROM submission"
+	for _, join := range []struct {
+		sql   string
+		count bool
+	}{
+		{` LEFT JOIN submission_cache ON submission_cache.fk_submission_id = submission.id`, needCache},
+		{` LEFT JOIN submission_file AS oldest_file ON oldest_file.id = submission_cache.fk_oldest_file_id`, needOldestFile},
+		{` LEFT JOIN submission_file AS newest_file ON newest_file.id = submission_cache.fk_newest_file_id`, needNewestFile},
+		{` LEFT JOIN comment AS newest_comment ON newest_comment.id = submission_cache.fk_newest_comment_id`, needComment},
+		{` LEFT JOIN discord_user uploader ON oldest_file.fk_user_id = uploader.id`, needUploader},
+		{` LEFT JOIN discord_user updater ON newest_comment.fk_user_id = updater.id`, needUpdater},
+		{` LEFT JOIN curation_meta meta ON meta.fk_submission_file_id = newest_file.id`, needMeta},
+	} {
+		submissionFrom += join.sql
+		if join.count {
+			countFrom += join.sql
+		}
+	}
+	submissionWhere := ` WHERE submission.deleted_at IS NULL` + and + strings.Join(filters, " AND ")
+	legacyWhere := ` WHERE 1` + masterAnd + strings.Join(masterFilters, " AND ")
+
 	finalQuery := `
 			SELECT submission.id AS submission_id,
 		(
@@ -382,23 +413,15 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		meta.game_exists AS meta_game_exists,
 		submission.frozen_at as frozen_at,
 		submission.should_autofreeze as should_autofreeze,
-        NULL AS game_uuid
-		FROM submission
-		LEFT JOIN submission_cache ON submission_cache.fk_submission_id = submission.id
-		LEFT JOIN submission_file AS oldest_file ON oldest_file.id = submission_cache.fk_oldest_file_id
-		LEFT JOIN submission_file AS newest_file ON newest_file.id = submission_cache.fk_newest_file_id
-		LEFT JOIN comment AS newest_comment ON newest_comment.id = submission_cache.fk_newest_comment_id
+        NULL AS game_uuid` + submissionFrom + `
 		LEFT JOIN (
 			SELECT fk_submission_id, COUNT(*) AS count 
 			FROM submission_file 
 			WHERE deleted_at IS NULL 
 			GROUP BY fk_submission_id
-		) AS submission_file_count ON submission_file_count.fk_submission_id = submission.id
-		LEFT JOIN discord_user uploader ON oldest_file.fk_user_id = uploader.id
-		LEFT JOIN discord_user updater ON newest_comment.fk_user_id = updater.id
-		LEFT JOIN curation_meta meta ON meta.fk_submission_file_id = newest_file.id`
+		) AS submission_file_count ON submission_file_count.fk_submission_id = submission.id`
 
-	rest := ` WHERE submission.deleted_at IS NULL` + and + strings.Join(filters, " AND ") + `
+	rest := submissionWhere + `
 		GROUP BY submission.id
 		UNION ALL
 			SELECT -1 AS submission_id,
@@ -435,7 +458,7 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			(SELECT FALSE) as should_autofreeze,
             uuid AS game_uuid
 			FROM masterdb_game
-			WHERE (SELECT 1) ` + masterAnd + strings.Join(masterFilters, " AND ") + `
+			` + legacyWhere + `
 		ORDER BY ` + currentOrderBy + ` ` + currentSortOrder + `, submission_id ASC, game_uuid ASC
 		`
 	unlimitedQuery := finalQuery + rest
@@ -446,18 +469,11 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 	unlimitedData := append(finalData, masterData...)
 	finalData = append(unlimitedData, currentLimit, currentOffset)
 
-	countingQuery := `SELECT COUNT(*) FROM ( ` + unlimitedQuery + ` ) AS counterino`
-	var counter int64
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		row := d.db.QueryRowContext(dbs.Ctx(), countingQuery, unlimitedData...)
-		if err := row.Scan(&counter); err != nil {
-			counter = -1
-			return
-		}
-	}()
+	// Count on the caller's transaction: its own writes and REPEATABLE READ
+	// snapshot must agree with the page. DISTINCT preserves grouped search
+	// semantics even if historical data contains duplicate cache/meta rows.
+	countingQuery := `SELECT (SELECT COUNT(DISTINCT submission.id)` + countFrom + submissionWhere +
+		`) + (SELECT COUNT(*) FROM masterdb_game` + legacyWhere + `)`
 
 	rows, err := dbs.Tx().QueryContext(dbs.Ctx(), finalQuery, finalData...)
 	if err != nil {
@@ -567,8 +583,16 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		result = append(result, s)
 	}
 
-	rows.Close()
-	wg.Wait()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, 0, err
+	}
+	var counter int64
+	if err := dbs.Tx().QueryRowContext(dbs.Ctx(), countingQuery, unlimitedData...).Scan(&counter); err != nil {
+		return nil, 0, err
+	}
 
 	return result, counter, nil
 }

@@ -63,7 +63,7 @@ func TestSubmissionSearchDeletedSubmission(t *testing.T) {
 	checkSearch(t, f, want, 1004, nil, []string{"C", "L1", "B", "L2"}, 4)
 }
 
-func TestSubmissionSearchCurrentBugCountUsesSeparateTransaction(t *testing.T) {
+func TestSubmissionSearchCountUsesCallerTransaction(t *testing.T) {
 	f, _ := seedSearchFixture(t)
 	ctx, cancel := context.WithTimeout(context.WithValue(f.Ctx, utils.CtxKeys.UserID, int64(1004)), 15*time.Second)
 	defer cancel()
@@ -75,11 +75,9 @@ func TestSubmissionSearchCurrentBugCountUsesSeparateTransaction(t *testing.T) {
 	rows, count, err := f.DB.SearchSubmissions(session, &types.SubmissionsFilter{ExcludeLegacy: true})
 	require.NoError(t, err)
 	require.Equal(t, []int64{103, 102}, searchEdgeIDs(rows), "row query sees its transaction's uncommitted deletion")
-	// Reproducer, not the migration contract: a separate connection counts the
-	// still-committed row. No concurrent writer, sleep or timing race is needed.
-
-	require.EqualValues(t, 3, count, "current separate-snapshot bug changed; require one snapshot when fixed")
-	require.NotEqual(t, int64(len(rows)), count)
+	// Both statements share this transaction's snapshot and its uncommitted writes.
+	require.EqualValues(t, 2, count)
+	require.Equal(t, int64(len(rows)), count)
 
 	require.NoError(t, session.Rollback())
 	rows, count = f.Search(t, 1004, &types.SubmissionsFilter{ExcludeLegacy: true})
@@ -170,4 +168,35 @@ func TestSubmissionSearchMixedDateTiePages(t *testing.T) {
 			require.Less(t, *all[0].GameUUID, *all[1].GameUUID)
 		}
 	}
+}
+
+// A search must make progress when its transaction owns the only pool connection.
+func TestSubmissionSearchSingleConnection(t *testing.T) {
+	f, _ := seedSearchFixture(t)
+	f.Maria.SetMaxOpenConns(1)
+	ctx, cancel := context.WithTimeout(f.Ctx, 5*time.Second)
+	defer cancel()
+	session, err := f.DB.NewSession(ctx)
+	require.NoError(t, err)
+	defer session.Rollback()
+	rows, count, err := f.DB.SearchSubmissions(session, &types.SubmissionsFilter{ExcludeLegacy: true})
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	require.EqualValues(t, 3, count)
+}
+
+func TestSubmissionSearchCountGroupsDuplicateCacheRows(t *testing.T) {
+	f, _ := seedSearchFixture(t)
+	// Historical schema permits this. Both page and count must retain their
+	// one-result-per-submission contract until duplicate cache rows are repaired.
+	_, err := f.Maria.Exec(`INSERT INTO submission_cache SELECT * FROM submission_cache WHERE fk_submission_id=101`)
+	require.NoError(t, err)
+	rows, count := f.Search(t, 1004, &types.SubmissionsFilter{ExcludeLegacy: true})
+	require.Equal(t, []int64{103, 102, 101}, searchEdgeIDs(rows))
+	require.EqualValues(t, 3, count)
+	rows, count = f.Search(t, 1004, &types.SubmissionsFilter{
+		SubmissionIDs: []int64{101}, BotActions: []string{"approve"},
+	})
+	require.Equal(t, []int64{101}, searchEdgeIDs(rows))
+	require.EqualValues(t, 1, count, "a required cache join must not multiply the total")
 }
