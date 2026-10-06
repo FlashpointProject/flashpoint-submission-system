@@ -54,7 +54,7 @@ type MysqlSession struct {
 
 // NewSession begins a transaction
 func (d *mysqlDAL) NewSession(ctx context.Context) (DBSession, error) {
-	tx, err := d.db.Begin()
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

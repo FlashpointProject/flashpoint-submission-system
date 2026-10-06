@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -74,6 +76,13 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 	}
 	if formAction == constants.ActionReject && len(sids) > 1 {
 		return perr("cannot reject multiple submissions at once", http.StatusBadRequest)
+	}
+
+	if err := database.LockSubmissions(dbs, sids...); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return perr("submission not found", http.StatusNotFound)
+		}
+		return dberr(err)
 	}
 
 	utils.LogCtx(ctx).Debugf("searching submissions for comment batch")
