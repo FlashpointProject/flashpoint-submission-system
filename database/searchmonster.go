@@ -334,12 +334,19 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
 		if filter.OrderBy != nil {
-			if *filter.OrderBy == "uploaded" {
+			switch *filter.OrderBy {
+			case "uploaded":
 				currentOrderBy = "created_at"
-			} else if *filter.OrderBy == "updated" {
+			case "updated":
 				currentOrderBy = "updated_at"
-			} else if *filter.OrderBy == "size" {
+			case "size":
 				currentOrderBy = "newest_file_size"
+			case "title":
+				currentOrderBy = "meta_title"
+			case "platform":
+				currentOrderBy = "meta_platform"
+			case "library":
+				currentOrderBy = "meta_library"
 			}
 		}
 		if filter.AscDesc != nil {

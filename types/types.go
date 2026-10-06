@@ -351,8 +351,12 @@ func (sf *SubmissionsFilter) Validate() error {
 	if sf.SubmitterNotMe != nil && *sf.SubmitterNotMe != "yes" {
 		return fmt.Errorf("submitter-not-me")
 	}
-	if sf.OrderBy != nil && *sf.OrderBy != "uploaded" && *sf.OrderBy != "updated" && *sf.OrderBy != "size" {
-		return fmt.Errorf("invalid order-by")
+	if sf.OrderBy != nil {
+		switch *sf.OrderBy {
+		case "uploaded", "updated", "size", "title", "platform", "library":
+		default:
+			return fmt.Errorf("invalid order-by")
+		}
 	}
 	if sf.AscDesc != nil && *sf.AscDesc != "asc" && *sf.AscDesc != "desc" {
 		return fmt.Errorf("invalid asc-desc")

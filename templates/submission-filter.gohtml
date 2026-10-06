@@ -426,6 +426,11 @@
                                                id="order-by-size"
                                                {{if eq "size" (unpointify .Filter.OrderBy)}}checked{{end}}>
                                         By size</label>
+                                    <label for="order-by-platform">
+                                        <input type="radio" name="order-by" value="platform"
+                                               id="order-by-platform"
+                                               {{if eq "platform" (unpointify .Filter.OrderBy)}}checked{{end}}>
+                                        By Platform</label>
                                     <label for="asc-desc">
                                         <input type="radio" name="asc-desc" value="asc"
                                                id="asc-desc-asc"
@@ -438,6 +443,16 @@
                                                id="order-by-updated"
                                                {{if eq "updated" (unpointify .Filter.OrderBy)}}checked{{end}}>
                                         By Updated at</label>
+                                    <label for="order-by-title">
+                                        <input type="radio" name="order-by" value="title"
+                                               id="order-by-title"
+                                               {{if eq "title" (unpointify .Filter.OrderBy)}}checked{{end}}>
+                                        By Title</label>
+                                    <label for="order-by-library">
+                                        <input type="radio" name="order-by" value="library"
+                                               id="order-by-library"
+                                               {{if eq "library" (unpointify .Filter.OrderBy)}}checked{{end}}>
+                                        By Library</label>
                                     <label for="asc-desc">
                                         <input type="radio" name="asc-desc" value="desc"
                                                id="asc-desc-desc"
