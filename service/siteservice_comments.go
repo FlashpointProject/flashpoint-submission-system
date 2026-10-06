@@ -14,6 +14,10 @@ import (
 
 func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int64, formAction, formMessage,
 	formIgnoreDupeActions, subDirFullPath, dataPacksDir, frozenPacksDir, imagesDir string, r *http.Request) error {
+	// An empty search filter means all submissions; reject empty mutation batches.
+	if len(sids) == 0 {
+		return perr("at least one submission ID is required", http.StatusBadRequest)
+	}
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)

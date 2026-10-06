@@ -15,7 +15,7 @@
                         onclick="batchComment('submission-checkbox', 'sid', 'comment')">
                     Comment
                 </button>
-                {{if isDecider .UserRoles}}
+                {{if and (isDecider .UserRoles) (not (has "mark-added" $submission.DistinctActions))}}
 
                     {{if not (has .UserID $submission.AssignedTestingUserIDs)}}
                         {{if not (has "reject" $submission.DistinctActions)}}
@@ -57,7 +57,7 @@
                                 {{end}}
                             {{end}}
                         {{end}}
-                    {{else}}
+                    {{else if not (eq .UserID $submission.LastUploaderID)}}
                         <button type="button" class="pure-button pure-button button-unassign-verification"
                                 onclick="batchComment('submission-checkbox', 'sid', 'unassign-verification')">
                             Unassign Verification
@@ -91,7 +91,7 @@
                     {{if not (has "reject" $submission.DistinctActions)}}
                         {{if gt (len $submission.ApprovedUserIDs) 0}}
                             {{if not (has .UserID $submission.VerifiedUserIDs)}}
-                                {{if has .UserID $submission.AssignedVerificationUserIDs}}
+                                {{if and (has .UserID $submission.AssignedVerificationUserIDs) (not (eq .UserID $submission.LastUploaderID))}}
                                     <button type="button" class="pure-button pure-button button-verify"
                                             onclick="batchComment('submission-checkbox', 'sid', 'verify')">
                                         Verify
