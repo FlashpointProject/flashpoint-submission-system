@@ -2337,50 +2337,6 @@ func provideArchiveForIndexing(filePath string, baseUrl string) ([]*types.Indexe
 	return ir.Files, ir.IndexingErrors, nil
 }
 
-func (s *SiteService) RecomputeSubmissionCacheAll(ctx context.Context) {
-
-	var perPage int64 = 10000
-	var count int64 = 1
-	var recomputedCount int64 = 0
-
-	for recomputedCount < count {
-		var submissions []*types.ExtendedSubmission
-		var err error
-		submissions, count, err = s.SearchSubmissions(ctx, &types.SubmissionsFilter{ResultsPerPage: &perPage, ExcludeLegacy: true})
-		if err != nil {
-			utils.LogCtx(ctx).Error(err)
-			return
-		}
-		utils.LogCtx(ctx).WithField("perPage", perPage).WithField("recomputedCount", recomputedCount).WithField("totalSubmissions", count).Debug("processing a page of submissions")
-
-		for _, submission := range submissions {
-			func() {
-				utils.LogCtx(ctx).WithField("submissionID", submission.SubmissionID).Debug("recomputing cache for submission")
-
-				dbs, err := s.dal.NewSession(ctx)
-				if err != nil {
-					utils.LogCtx(ctx).Error(err)
-					return
-				}
-				defer dbs.Rollback()
-
-				err = s.dal.UpdateSubmissionCacheTable(dbs, submission.SubmissionID)
-				if err != nil {
-					utils.LogCtx(ctx).Error(err)
-					return
-				}
-
-				if err := dbs.Commit(); err != nil {
-					utils.LogCtx(ctx).Error(err)
-					return
-				}
-			}()
-		}
-
-		recomputedCount += count
-	}
-}
-
 func (s *SiteService) ForceApproveSubmission(ctx context.Context, sid int64) error {
 	uid := utils.UserID(ctx)
 	dbs, err := s.dal.NewSession(ctx)
