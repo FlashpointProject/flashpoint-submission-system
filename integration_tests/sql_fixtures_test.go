@@ -20,7 +20,7 @@ var fixtureEpoch = time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
 
 // sqlFixture seeds source records directly, never cached query answers. Each
 // helper commits before reads because search counts use a separate connection.
-// Keep backend SQL here so future PostgreSQL fixtures can share the assertions.
+// Keep fixture SQL here so state and search tests share explicit source rows.
 // It starts no app, validator, upload worker or external file operations.
 type sqlFixture struct {
 	DB    database.DAL

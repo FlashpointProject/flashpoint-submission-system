@@ -79,7 +79,6 @@ func TestSubmissionSimilarityCandidates(t *testing.T) {
 		require.NoError(t, err)
 		require.ElementsMatch(t, want, got, "full tuples and live-row representation must survive")
 
-		// PostgreSQL explicitly orders collation keys, including NULLS LAST.
 		// MariaDB UNION has no ORDER BY, so its output order is not a contract.
 
 	})

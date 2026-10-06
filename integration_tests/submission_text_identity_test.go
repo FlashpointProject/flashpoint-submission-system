@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These exercise DAL lookups, not just standalone collation helpers. Identical
-// assertions run against MariaDB and the PostgreSQL translation.
+// Exercise MariaDB DAL lookups with production collation semantics.
 func TestSubmissionTextIdentityActions(t *testing.T) {
 	f := newSQLFixture(t)
 	f.User(t, 11, "reviewer")

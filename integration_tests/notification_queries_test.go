@@ -152,7 +152,7 @@ func TestNotificationQueriesInvalidSettingsRollback(t *testing.T) {
 }
 
 // Duplicate settings currently persist (there is no unique constraint). This is
-// characterization, not a PostgreSQL storage contract: recipients MUST be unique
+// characterization of stored rows: notification recipients MUST still be unique
 // regardless; duplicate settings remain a separate schema-cleanup decision.
 func TestNotificationQueriesCurrentBehaviorDuplicateSettings(t *testing.T) {
 	f := newSQLFixture(t)
@@ -220,7 +220,7 @@ func TestNotificationQueriesOldestUnsentQueue(t *testing.T) {
 }
 
 // The queue has no ID tie-breaker. Do not bless whichever tied row MariaDB
-// happens to return first as an ordering contract for PostgreSQL.
+// happens to return first as a guaranteed ordering contract.
 func TestNotificationQueriesCurrentBehaviorTimestampTie(t *testing.T) {
 	f := newSQLFixture(t)
 	for _, id := range []int64{20, 10} {
