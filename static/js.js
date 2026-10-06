@@ -424,19 +424,36 @@ function filterIHaveRequestedChangesVerification() {
 }
 
 function switchFilterLayout(newLayout) {
-    let url = new URL(window.location.href)
-
-    keys = []
-    for (let pair of url.searchParams.entries()) {
-        keys.push(pair[0])
+    if (newLayout !== "simple" && newLayout !== "advanced") {
+        return
+    }
+    const target = document.getElementById(`filter-form-${newLayout}`)
+    const source = document.getElementById(`filter-form-${newLayout === "simple" ? "advanced" : "simple"}`)
+    if (!source || !target || !target.hidden) {
+        return
     }
 
-    for (let k of keys) {
-        url.searchParams.delete(k)
+    // Both forms are already rendered. Transfer shared controls, including
+    // cleared values, while keeping advanced-only edits in the advanced form.
+    const sourceInputs = Array.from(source.querySelectorAll("input[name]"))
+    for (const input of target.querySelectorAll("input[name]")) {
+        if (input.name === "filter-layout") continue
+        const checkable = input.type === "checkbox" || input.type === "radio"
+        const matching = sourceInputs.find(other => other.name === input.name &&
+            other.type === input.type && (!checkable || other.value === input.value))
+        if (!matching) continue
+        if (checkable) input.checked = matching.checked
+        else input.value = matching.value
     }
 
+    source.hidden = true
+    target.hidden = false
+
+    // Retain the applied search and remember the layout without issuing a GET.
+    const url = new URL(window.location.href)
     url.searchParams.set("filter-layout", newLayout)
-    window.location.href = url
+    window.history.replaceState(window.history.state, "", url)
+    target.querySelector("[data-filter-layout-switch]").focus({preventScroll: true})
 }
 
 function updateLocalSettings() {

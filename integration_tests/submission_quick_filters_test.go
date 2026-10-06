@@ -39,6 +39,11 @@ func quickFilterQuery(t *testing.T, root, handler, layout string) string {
 
 func submissionFilterFormQuery(t *testing.T, root, handler, layout string, filter *types.SubmissionsFilter) string {
 	t.Helper()
+	return runSubmissionFilterFormScript(t, root, "quick-filter.cjs", handler, layout, filter)
+}
+
+func runSubmissionFilterFormScript(t *testing.T, root, runner, handler, layout string, filter *types.SubmissionsFilter) string {
+	t.Helper()
 	tmpl, err := template.New("submission-filter").Funcs(sprig.FuncMap()).Funcs(template.FuncMap{
 		"unpointify": utils.Unpointify,
 	}).ParseFiles(filepath.Join(root, "templates/submission-filter.gohtml"), filepath.Join(root, "templates/submission-filter-chunks.gohtml"))
@@ -51,11 +56,11 @@ func submissionFilterFormQuery(t *testing.T, root, handler, layout string, filte
 	require.NoError(t, err)
 	script, err := os.ReadFile(filepath.Join(root, "static/js.js"))
 	require.NoError(t, err)
-	input, err := json.Marshal(map[string]string{"html": html.String(), "script": string(script), "handler": handler})
+	input, err := json.Marshal(map[string]string{"html": html.String(), "script": string(script), "handler": handler, "layout": layout})
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "integration_tests/browser/quick-filter.cjs"))
+	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "integration_tests/browser", runner))
 	cmd.Stdin = bytes.NewReader(input)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -305,6 +310,17 @@ func TestSubmissionQuickFiltersAssignedFixUploader(t *testing.T) {
 			uploadFixedVersion(t, l, app, original, sid)
 			check(assignedQuery, 1)
 			check(changesQuery, 1)
+		})
+	}
+}
+
+func TestSubmissionFilterLayoutSwitch(t *testing.T) {
+	root, err := filepath.Abs("..")
+	require.NoError(t, err)
+	for _, layout := range []string{"simple", "advanced"} {
+		t.Run(layout, func(t *testing.T) {
+			result := runSubmissionFilterFormScript(t, root, "switch-filter.cjs", "", layout, &types.SubmissionsFilter{})
+			require.Equal(t, "ok", result)
 		})
 	}
 }

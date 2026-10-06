@@ -73,7 +73,7 @@ alias for the full containerized run; the old rebuild/migrate targets are remove
 ## Search quick filters
 
 ```sh
-bash integration_tests/run.sh -run '^TestSubmission(QuickFilter|UploaderFilter|Search)'
+bash integration_tests/run.sh -run '^TestSubmission(QuickFilter|UploaderFilter|FilterLayoutSwitch|Search)'
 ```
 
 The image includes Node and a locked, test-only jsdom dependency. These tests
@@ -83,6 +83,8 @@ requests. Multi-user histories upload real fixture archives with a mock validato
 and check review requests as well as search rows and counts. All seven presets
 are checked in both layouts; the original-submitter and latest-uploader options
 are checked separately and together. jsdom checks form behavior, not visual layout.
+Layout-switch tests cover shared edits, cleared selections, retained advanced
+drafts, reset, URL preservation, and switching without submitting a search.
 
 Scope limits: this is a correctness harness, not the production-dump replay or
 performance harness. Lookup seed rows are preserved rather than reconstructed
