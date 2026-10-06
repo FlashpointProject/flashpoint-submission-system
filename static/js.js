@@ -301,15 +301,17 @@ function resetFilterForm() {
                 inputs[i].checked = false
             } else if (inputs[i].type === "text" || inputs[i].type === "number") {
                 inputs[i].value = ""
+            } else if (inputs[i].tagName === "SELECT") {
+                inputs[i].value = ""
             }
         }
     }
 
     if (formSimple !== null) {
-        r(formSimple.getElementsByTagName("input"))
+        r(formSimple.querySelectorAll("input, select"))
     }
     if (formAdvanced !== null) {
-        r(formAdvanced.getElementsByTagName("input"))
+        r(formAdvanced.querySelectorAll("input, select"))
     }
 }
 

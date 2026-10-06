@@ -165,6 +165,20 @@ type SubmissionsFilter struct {
 	SubmitterUsernamePartial       *string  `schema:"submitter-username-partial"`
 	PlatformPartial                *string  `schema:"platform-partial"`
 	LibraryPartial                 *string  `schema:"library-partial"`
+	SeriesPartial                  *string  `schema:"series-partial"`
+	DeveloperPartial               *string  `schema:"developer-partial"`
+	PublisherPartial               *string  `schema:"publisher-partial"`
+	TagsPartial                    *string  `schema:"tags-partial"`
+	PlayModePartial                *string  `schema:"play-mode-partial"`
+	StatusPartial                  *string  `schema:"status-partial"`
+	VersionPartial                 *string  `schema:"version-partial"`
+	ReleaseDatePartial             *string  `schema:"release-date-partial"`
+	LanguagePartial                *string  `schema:"language-partial"`
+	SourcePartial                  *string  `schema:"source-partial"`
+	GameNotesPartial               *string  `schema:"game-notes-partial"`
+	CurationNotesPartial           *string  `schema:"curation-notes-partial"`
+	OriginalDescriptionPartial     *string  `schema:"original-description-partial"`
+	HasAdditionalApplications      *string  `schema:"has-additional-applications"`
 	OriginalFilenamePartialAny     *string  `schema:"original-filename-partial-any"`
 	CurrentFilenamePartialAny      *string  `schema:"current-filename-partial-any"`
 	MD5SumPartialAny               *string  `schema:"md5sum-partial-any"`
@@ -326,6 +340,9 @@ func (sf *SubmissionsFilter) Validate() error {
 	}
 	if sf.IsFrozen != nil && *sf.IsFrozen != "no" && *sf.IsFrozen != "yes" {
 		return fmt.Errorf("invalid is-frozen")
+	}
+	if sf.HasAdditionalApplications != nil && *sf.HasAdditionalApplications != "no" && *sf.HasAdditionalApplications != "yes" {
+		return fmt.Errorf("invalid has-additional-applications")
 	}
 
 	if sf.LastUploaderNotMe != nil && *sf.LastUploaderNotMe != "yes" {

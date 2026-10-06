@@ -86,6 +86,20 @@ are checked separately and together. jsdom checks form behavior, not visual layo
 Layout-switch tests cover shared edits, cleared selections, retained advanced
 drafts, reset, URL preservation, and switching without submitting a search.
 
+Run the additional metadata search cases with:
+
+```sh
+bash integration_tests/run.sh -run '^TestSubmissionSearchMetadata'
+```
+
+These cover every new text field, case-insensitive partial matching, Tags
+include/exclude combinations, legacy metadata, current versus historical/deleted
+versions, NULL/empty metadata, additional-application lists, combined filters,
+and pagination counts. Form tests serialize the rendered advanced controls and
+send them through authenticated submissions and my-submissions HTTP requests.
+The quick-filter and layout-switch cases also check clearing the new dropdown
+and retaining metadata drafts without changing basic-search scope.
+
 Scope limits: this is a correctness harness, not the production-dump replay or
 performance harness. Lookup seed rows are preserved rather than reconstructed
 after every test, so tests that mutate those rows must restore them. Successful

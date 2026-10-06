@@ -26,11 +26,13 @@ import (
 func quickFilterQuery(t *testing.T, root, handler, layout string) string {
 	t.Helper()
 	// Start with stale selections to exercise reset as well as preset selection.
-	query := submissionFilterFormQuery(t, root, handler, layout, &types.SubmissionsFilter{TitlePartial: utils.StrPtr("stale search"), Page: utils.Int64Ptr(9), SubscribedMe: utils.StrPtr("yes"), LastUploaderNotMe: utils.StrPtr("yes"), SubmitterNotMe: utils.StrPtr("yes")})
+	query := submissionFilterFormQuery(t, root, handler, layout, &types.SubmissionsFilter{TitlePartial: utils.StrPtr("stale search"), Page: utils.Int64Ptr(9), SubscribedMe: utils.StrPtr("yes"), DeveloperPartial: utils.StrPtr("stale developer"), HasAdditionalApplications: utils.StrPtr("no"), LastUploaderNotMe: utils.StrPtr("yes"), SubmitterNotMe: utils.StrPtr("yes")})
 	q, err := url.ParseQuery(query)
 	require.NoError(t, err)
 	require.Empty(t, q.Get("title-partial"))
 	require.Empty(t, q.Get("page"))
+	require.Empty(t, q.Get("developer-partial"))
+	require.Empty(t, q.Get("has-additional-applications"))
 	require.Empty(t, q.Get("subscribed-me"))
 	require.Empty(t, q.Get("submitter-not-me"), "presets must not add an original-owner restriction")
 	require.Equal(t, "advanced", q.Get("filter-layout"))

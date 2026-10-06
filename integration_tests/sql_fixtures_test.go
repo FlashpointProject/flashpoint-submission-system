@@ -143,5 +143,7 @@ func (f *sqlFixture) Legacy(t *testing.T, id int64, meta *types.CurationMeta, cr
 	t.Helper()
 	_, err := f.Maria.ExecContext(f.Ctx, testSQL(`INSERT INTO masterdb_game (id,uuid,title,alternate_titles,platform,launch_command,library,extreme,date_added,date_modified) VALUES (?,?,?,?,?,?,?,?,?,?)`), id, fmt.Sprintf("00000000-0000-0000-0000-%012d", id), meta.Title, meta.AlternateTitles, meta.Platform, meta.LaunchCommand, meta.Library, meta.Extreme, created, updated)
 	require.NoError(t, err)
-
+	_, err = f.Maria.ExecContext(f.Ctx, testSQL(`UPDATE masterdb_game SET series=?,developer=?,publisher=?,play_mode=?,status=?,version=?,release_date=?,languages=?,source=?,game_notes=?,original_description=?,tags=? WHERE id=?`),
+		meta.Series, meta.Developer, meta.Publisher, meta.PlayMode, meta.Status, meta.Version, meta.ReleaseDate, meta.Languages, meta.Source, meta.GameNotes, meta.OriginalDescription, meta.Tags, id)
+	require.NoError(t, err)
 }

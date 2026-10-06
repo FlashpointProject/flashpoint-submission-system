@@ -18,7 +18,7 @@ window.HTMLFormElement.prototype.submit = function () { submissions++; };
 window.fetch = () => { throw new Error('Switch must not fetch'); };
 const simple = window.document.getElementById('filter-form-simple');
 const advanced = window.document.getElementById('filter-form-advanced');
-const field = (form, name, value) => [...form.querySelectorAll('input')].find(input =>
+const field = (form, name, value) => [...form.querySelectorAll('input, select')].find(input =>
     input.name === name && (value === undefined || input.value === value));
 const switchTo = next => {
     const source = next === 'advanced' ? simple : advanced;
@@ -54,6 +54,8 @@ assert.equal(field(advanced, 'is-extreme', 'no').checked, true);
 field(advanced, 'submitter-not-me').checked = true;
 field(advanced, 'launch-command-fuzzy').value = 'keep advanced draft';
 field(advanced, 'title-partial').value = 'advanced edit';
+field(advanced, 'developer-partial').value = 'keep metadata draft';
+field(advanced, 'has-additional-applications').value = 'no';
 field(advanced, 'bot-action', 'approve').checked = false;
 field(advanced, 'is-extreme', 'yes').checked = true;
 switchTo('simple');
@@ -64,6 +66,8 @@ assert.equal(field(simple, 'is-extreme', 'yes').checked, true);
 assert.equal(field(simple, 'is-extreme', 'no').checked, false);
 const basicQuery = new URLSearchParams(new window.FormData(simple));
 assert.equal(basicQuery.get('filter-layout'), 'simple');
+assert.equal(basicQuery.has('developer-partial'), false);
+assert.equal(basicQuery.has('has-additional-applications'), false);
 assert.equal(basicQuery.has('submitter-not-me'), false); // Basic searches keep their existing scope.
 field(simple, 'title-partial').value = '';
 field(simple, 'bot-action', 'request-changes').checked = false;
@@ -74,6 +78,8 @@ assert.equal(field(advanced, 'bot-action', 'request-changes').checked, false);
 assert.equal(field(advanced, 'is-extreme', 'yes').checked, false);
 assert.equal(field(advanced, 'submitter-not-me').checked, true);
 assert.equal(field(advanced, 'launch-command-fuzzy').value, 'keep advanced draft');
+assert.equal(field(advanced, 'developer-partial').value, 'keep metadata draft');
+assert.equal(field(advanced, 'has-additional-applications').value, 'no');
 assert.equal(new window.FormData(advanced).get('filter-layout'), 'advanced');
 // Repeated/invalid calls must not overwrite the visible form with stale values.
 field(advanced, 'title-partial').value = 'do not overwrite';
@@ -82,6 +88,8 @@ window.switchFilterLayout('unknown');
 assert.equal(field(advanced, 'title-partial').value, 'do not overwrite');
 window.resetFilterForm();
 assert.equal(field(advanced, 'launch-command-fuzzy').value, '');
+assert.equal(field(advanced, 'developer-partial').value, '');
+assert.equal(field(advanced, 'has-additional-applications').value, '');
 assert.equal(field(advanced, 'submitter-not-me').checked, false);
 switchTo('simple');
 window.filterReadyForVerification();

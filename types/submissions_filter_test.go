@@ -41,6 +41,7 @@ func TestSubmissionsFilterValidateStringChoices(t *testing.T) {
 		{"IsExtreme", []string{"no", "yes", "No", "Yes"}},
 		{"IsContentChange", []string{"no", "yes"}},
 		{"IsFrozen", []string{"no", "yes"}},
+		{"HasAdditionalApplications", []string{"no", "yes"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.field, func(t *testing.T) {

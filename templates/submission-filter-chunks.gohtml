@@ -1,3 +1,62 @@
+{{define "submission-filter-additional-meta"}}
+    <div class="form-column">
+        <fieldset class="additional-metadata-filter">
+            <legend>Additional Metadata Filters</legend>
+            <p class="additional-metadata-help">Text fields: partial, case-insensitive. Tags: comma-separated includes (match any); ! excludes.</p>
+            <div class="additional-metadata-grid">
+                <label for="series-partial">Series
+                    <input id="series-partial" name="series-partial" type="text" value="{{default "" .Filter.SeriesPartial}}">
+                </label>
+                <label for="developer-partial">Developer
+                    <input id="developer-partial" name="developer-partial" type="text" value="{{default "" .Filter.DeveloperPartial}}">
+                </label>
+                <label for="publisher-partial">Publisher
+                    <input id="publisher-partial" name="publisher-partial" type="text" value="{{default "" .Filter.PublisherPartial}}">
+                </label>
+                <label for="tags-partial">Tags
+                    <input id="tags-partial" name="tags-partial" type="text" value="{{default "" .Filter.TagsPartial}}" placeholder="puzzle, arcade, !adult">
+                </label>
+                <label for="play-mode-partial">Play Mode
+                    <input id="play-mode-partial" name="play-mode-partial" type="text" value="{{default "" .Filter.PlayModePartial}}">
+                </label>
+                <label for="status-partial">Status
+                    <input id="status-partial" name="status-partial" type="text" value="{{default "" .Filter.StatusPartial}}">
+                </label>
+                <label for="version-partial">Version
+                    <input id="version-partial" name="version-partial" type="text" value="{{default "" .Filter.VersionPartial}}">
+                </label>
+                <label for="release-date-partial">Release Date
+                    <input id="release-date-partial" name="release-date-partial" type="text" value="{{default "" .Filter.ReleaseDatePartial}}" placeholder="e.g. 2004 or 2004-06">
+                </label>
+                <label for="language-partial">Language
+                    <input id="language-partial" name="language-partial" type="text" value="{{default "" .Filter.LanguagePartial}}">
+                </label>
+                <label for="source-partial">Source
+                    <input id="source-partial" name="source-partial" type="text" value="{{default "" .Filter.SourcePartial}}">
+                </label>
+                <div>
+                    <label for="has-additional-applications">Additional Applications</label>
+                    <select id="has-additional-applications" name="has-additional-applications">
+                        <option value="">Any</option>
+                        <option value="yes" {{if eq "yes" (unpointify .Filter.HasAdditionalApplications)}}selected{{end}}>Has any</option>
+                        <option value="no" {{if eq "no" (unpointify .Filter.HasAdditionalApplications)}}selected{{end}}>Has none</option>
+                    </select>
+                </div>
+            </div>
+            <div class="additional-metadata-grid">
+                <label for="game-notes-partial">Game Notes
+                    <input id="game-notes-partial" name="game-notes-partial" type="text" value="{{default "" .Filter.GameNotesPartial}}">
+                </label>
+                <label for="curation-notes-partial">Curation Notes
+                    <input id="curation-notes-partial" name="curation-notes-partial" type="text" value="{{default "" .Filter.CurationNotesPartial}}">
+                </label>
+                <label for="original-description-partial">Original Description
+                    <input id="original-description-partial" name="original-description-partial" type="text" value="{{default "" .Filter.OriginalDescriptionPartial}}">
+                </label>
+            </div>
+        </fieldset>
+    </div>
+{{end}}
 {{define "submission-filter-type"}}
     <fieldset>
         <legend>Filter by type</legend>
