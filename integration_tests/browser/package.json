@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "DOM execution for submission quick-filter integration tests",
+  "dependencies": {
+    "jsdom": "26.1.0"
+  }
+}

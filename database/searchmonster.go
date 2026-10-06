@@ -282,6 +282,11 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			}
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
+		if filter.SubmitterNotMe != nil {
+			filters = append(filters, "(oldest_file.fk_user_id != ?)")
+			data = append(data, uid)
+			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
+		}
 		if filter.OrderBy != nil {
 			if *filter.OrderBy == "uploaded" {
 				currentOrderBy = "created_at"

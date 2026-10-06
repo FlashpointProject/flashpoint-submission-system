@@ -352,6 +352,7 @@ function filterReadyForVerification() {
     document.getElementById("verification-status-none").checked = true
 
     document.getElementById("approvals-status-me-no").checked = true
+    document.getElementById("assigned-status-testing-me-unassigned").checked = true
     document.getElementById("last-uploader-not-me").checked = true
 
     document.getElementById("order-by-uploaded").checked = true
@@ -386,6 +387,7 @@ function filterAssignedToMeForTesting() {
     resetFilterForm()
 
     document.getElementById("assigned-status-testing-me-assigned").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
@@ -395,6 +397,7 @@ function filterAssignedToMeForVerification() {
     resetFilterForm()
 
     document.getElementById("assigned-status-verification-me-assigned").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
@@ -405,6 +408,7 @@ function filterIHaveRequestedChangesAfterTesting() {
 
     document.getElementById("assigned-status-testing-me-assigned").checked = true
     document.getElementById("requested-changes-status-me-ongoing").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
@@ -414,6 +418,7 @@ function filterIHaveRequestedChangesVerification() {
 
     document.getElementById("assigned-status-verification-me-assigned").checked = true
     document.getElementById("requested-changes-status-me-ongoing").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }

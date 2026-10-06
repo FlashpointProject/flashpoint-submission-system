@@ -34,6 +34,7 @@ integration_tests/test_data
 integration_tests/templates
 # Isolated test and snapshot artifacts
 integration_tests/results/
+integration_tests/browser/node_modules/
 snapshot-results/
 
 # Local production snapshots

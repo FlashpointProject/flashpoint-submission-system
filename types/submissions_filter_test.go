@@ -34,6 +34,7 @@ func TestSubmissionsFilterValidateStringChoices(t *testing.T) {
 		{"ApprovalsStatusUser", []string{"no", "yes"}},
 		{"VerificationStatusUser", []string{"no", "yes"}},
 		{"LastUploaderNotMe", []string{"yes"}},
+		{"SubmitterNotMe", []string{"yes"}},
 		{"OrderBy", []string{"uploaded", "updated", "size"}},
 		{"AscDesc", []string{"asc", "desc"}},
 		{"SubscribedMe", []string{"no", "yes"}},

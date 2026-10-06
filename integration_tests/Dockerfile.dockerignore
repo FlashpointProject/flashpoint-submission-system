@@ -21,6 +21,8 @@
 !migrations/**
 !postgres_migrations/**
 !integration_tests/*.go
+!integration_tests/browser/*.json
+!integration_tests/browser/*.cjs
 !integration_tests/testenv.env
 !integration_tests/test_files/**
 !integration_tests/testdata/histories/*.json

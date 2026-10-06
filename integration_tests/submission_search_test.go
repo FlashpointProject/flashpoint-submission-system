@@ -192,6 +192,7 @@ func TestSubmissionSearchFilters(t *testing.T) {
 		{"submission IDs", &types.SubmissionsFilter{SubmissionIDs: []int64{101, 103}}, []string{"C", "A"}},
 		{"missing ID", &types.SubmissionsFilter{SubmissionIDs: []int64{999}}, nil},
 		{"submitter is oldest uploader", &types.SubmissionsFilter{SubmitterID: utils.Int64Ptr(1001)}, []string{"C", "A"}},
+		{"exclude original uploader and legacy", &types.SubmissionsFilter{SubmitterNotMe: utils.StrPtr("yes")}, []string{"C", "B", "A"}},
 		{"updated by newest comment author", &types.SubmissionsFilter{UpdatedByID: utils.Int64Ptr(1003)}, []string{"A"}},
 		{"title both branches", &types.SubmissionsFilter{TitlePartial: utils.StrPtr("Aurora")}, []string{"L1", "A"}},
 		{"alternate title", &types.SubmissionsFilter{TitlePartial: utils.StrPtr("Northern")}, []string{"A"}},
@@ -380,6 +381,14 @@ func TestSubmissionSearchExactUserMembership(t *testing.T) {
 
 func TestSubmissionSearchFilterRegressions(t *testing.T) {
 	f, want := seedSearchFixture(t)
+	t.Run("original and latest uploader filters are independent", func(t *testing.T) {
+		checkSearch(t, f, want, 1001, &types.SubmissionsFilter{SubmitterNotMe: utils.StrPtr("yes")}, []string{"B"}, 1)
+		checkSearch(t, f, want, 1002, &types.SubmissionsFilter{SubmitterNotMe: utils.StrPtr("yes")}, []string{"C", "A"}, 2)
+		checkSearch(t, f, want, 1001, &types.SubmissionsFilter{SubmitterNotMe: utils.StrPtr("yes"), LastUploaderNotMe: utils.StrPtr("yes")}, []string{"B"}, 1)
+		checkSearch(t, f, want, 1002, &types.SubmissionsFilter{SubmitterNotMe: utils.StrPtr("yes"), LastUploaderNotMe: utils.StrPtr("yes")}, []string{"C"}, 1)
+		checkSearch(t, f, want, 1001, &types.SubmissionsFilter{SubmitterID: utils.Int64Ptr(1001), SubmitterNotMe: utils.StrPtr("yes")}, nil, 0)
+		checkSearch(t, f, want, 1002, &types.SubmissionsFilter{SubmitterNotMe: utils.StrPtr("yes"), ResultsPerPage: utils.Int64Ptr(1), Page: utils.Int64Ptr(2)}, []string{"A"}, 2)
+	})
 	t.Run("last uploader is newest file author", func(t *testing.T) {
 		checkSearch(t, f, want, 1001, &types.SubmissionsFilter{SubmissionIDs: []int64{101}, LastUploaderNotMe: utils.StrPtr("yes")}, []string{"A"}, 1)
 		checkSearch(t, f, want, 1002, &types.SubmissionsFilter{SubmissionIDs: []int64{101}, LastUploaderNotMe: utils.StrPtr("yes")}, nil, 0)
