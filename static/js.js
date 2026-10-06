@@ -301,15 +301,17 @@ function resetFilterForm() {
                 inputs[i].checked = false
             } else if (inputs[i].type === "text" || inputs[i].type === "number") {
                 inputs[i].value = ""
+            } else if (inputs[i].tagName === "SELECT") {
+                inputs[i].value = ""
             }
         }
     }
 
     if (formSimple !== null) {
-        r(formSimple.getElementsByTagName("input"))
+        r(formSimple.querySelectorAll("input, select"))
     }
     if (formAdvanced !== null) {
-        r(formAdvanced.getElementsByTagName("input"))
+        r(formAdvanced.querySelectorAll("input, select"))
     }
 }
 
@@ -352,6 +354,7 @@ function filterReadyForVerification() {
     document.getElementById("verification-status-none").checked = true
 
     document.getElementById("approvals-status-me-no").checked = true
+    document.getElementById("assigned-status-testing-me-unassigned").checked = true
     document.getElementById("last-uploader-not-me").checked = true
 
     document.getElementById("order-by-uploaded").checked = true
@@ -386,6 +389,7 @@ function filterAssignedToMeForTesting() {
     resetFilterForm()
 
     document.getElementById("assigned-status-testing-me-assigned").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
@@ -395,6 +399,7 @@ function filterAssignedToMeForVerification() {
     resetFilterForm()
 
     document.getElementById("assigned-status-verification-me-assigned").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
@@ -405,6 +410,7 @@ function filterIHaveRequestedChangesAfterTesting() {
 
     document.getElementById("assigned-status-testing-me-assigned").checked = true
     document.getElementById("requested-changes-status-me-ongoing").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
@@ -414,24 +420,42 @@ function filterIHaveRequestedChangesVerification() {
 
     document.getElementById("assigned-status-verification-me-assigned").checked = true
     document.getElementById("requested-changes-status-me-ongoing").checked = true
+    document.getElementById("last-uploader-not-me").checked = true
 
     submitAdvancedFilterForm()
 }
 
 function switchFilterLayout(newLayout) {
-    let url = new URL(window.location.href)
-
-    keys = []
-    for (let pair of url.searchParams.entries()) {
-        keys.push(pair[0])
+    if (newLayout !== "simple" && newLayout !== "advanced") {
+        return
+    }
+    const target = document.getElementById(`filter-form-${newLayout}`)
+    const source = document.getElementById(`filter-form-${newLayout === "simple" ? "advanced" : "simple"}`)
+    if (!source || !target || !target.hidden) {
+        return
     }
 
-    for (let k of keys) {
-        url.searchParams.delete(k)
+    // Both forms are already rendered. Transfer shared controls, including
+    // cleared values, while keeping advanced-only edits in the advanced form.
+    const sourceInputs = Array.from(source.querySelectorAll("input[name]"))
+    for (const input of target.querySelectorAll("input[name]")) {
+        if (input.name === "filter-layout") continue
+        const checkable = input.type === "checkbox" || input.type === "radio"
+        const matching = sourceInputs.find(other => other.name === input.name &&
+            other.type === input.type && (!checkable || other.value === input.value))
+        if (!matching) continue
+        if (checkable) input.checked = matching.checked
+        else input.value = matching.value
     }
 
+    source.hidden = true
+    target.hidden = false
+
+    // Retain the applied search and remember the layout without issuing a GET.
+    const url = new URL(window.location.href)
     url.searchParams.set("filter-layout", newLayout)
-    window.location.href = url
+    window.history.replaceState(window.history.state, "", url)
+    target.querySelector("[data-filter-layout-switch]").focus({preventScroll: true})
 }
 
 function updateLocalSettings() {

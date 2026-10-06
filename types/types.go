@@ -165,6 +165,20 @@ type SubmissionsFilter struct {
 	SubmitterUsernamePartial       *string  `schema:"submitter-username-partial"`
 	PlatformPartial                *string  `schema:"platform-partial"`
 	LibraryPartial                 *string  `schema:"library-partial"`
+	SeriesPartial                  *string  `schema:"series-partial"`
+	DeveloperPartial               *string  `schema:"developer-partial"`
+	PublisherPartial               *string  `schema:"publisher-partial"`
+	TagsPartial                    *string  `schema:"tags-partial"`
+	PlayModePartial                *string  `schema:"play-mode-partial"`
+	StatusPartial                  *string  `schema:"status-partial"`
+	VersionPartial                 *string  `schema:"version-partial"`
+	ReleaseDatePartial             *string  `schema:"release-date-partial"`
+	LanguagePartial                *string  `schema:"language-partial"`
+	SourcePartial                  *string  `schema:"source-partial"`
+	GameNotesPartial               *string  `schema:"game-notes-partial"`
+	CurationNotesPartial           *string  `schema:"curation-notes-partial"`
+	OriginalDescriptionPartial     *string  `schema:"original-description-partial"`
+	HasAdditionalApplications      *string  `schema:"has-additional-applications"`
 	OriginalFilenamePartialAny     *string  `schema:"original-filename-partial-any"`
 	CurrentFilenamePartialAny      *string  `schema:"current-filename-partial-any"`
 	MD5SumPartialAny               *string  `schema:"md5sum-partial-any"`
@@ -194,6 +208,7 @@ type SubmissionsFilter struct {
 	DistinctActionsNot             []string `schema:"distinct-action-not"`
 	LaunchCommandFuzzy             *string  `schema:"launch-command-fuzzy"`
 	LastUploaderNotMe              *string  `schema:"last-uploader-not-me"`
+	SubmitterNotMe                 *string  `schema:"submitter-not-me"`
 	OrderBy                        *string  `schema:"order-by"`
 	AscDesc                        *string  `schema:"asc-desc"`
 	SubscribedMe                   *string  `schema:"subscribed-me"`
@@ -326,12 +341,22 @@ func (sf *SubmissionsFilter) Validate() error {
 	if sf.IsFrozen != nil && *sf.IsFrozen != "no" && *sf.IsFrozen != "yes" {
 		return fmt.Errorf("invalid is-frozen")
 	}
+	if sf.HasAdditionalApplications != nil && *sf.HasAdditionalApplications != "no" && *sf.HasAdditionalApplications != "yes" {
+		return fmt.Errorf("invalid has-additional-applications")
+	}
 
 	if sf.LastUploaderNotMe != nil && *sf.LastUploaderNotMe != "yes" {
 		return fmt.Errorf("last-uploader-not-me")
 	}
-	if sf.OrderBy != nil && *sf.OrderBy != "uploaded" && *sf.OrderBy != "updated" && *sf.OrderBy != "size" {
-		return fmt.Errorf("invalid order-by")
+	if sf.SubmitterNotMe != nil && *sf.SubmitterNotMe != "yes" {
+		return fmt.Errorf("submitter-not-me")
+	}
+	if sf.OrderBy != nil {
+		switch *sf.OrderBy {
+		case "uploaded", "updated", "size", "title", "platform", "library":
+		default:
+			return fmt.Errorf("invalid order-by")
+		}
 	}
 	if sf.AscDesc != nil && *sf.AscDesc != "asc" && *sf.AscDesc != "desc" {
 		return fmt.Errorf("invalid asc-desc")

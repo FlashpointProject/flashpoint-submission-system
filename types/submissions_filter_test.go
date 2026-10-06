@@ -34,12 +34,14 @@ func TestSubmissionsFilterValidateStringChoices(t *testing.T) {
 		{"ApprovalsStatusUser", []string{"no", "yes"}},
 		{"VerificationStatusUser", []string{"no", "yes"}},
 		{"LastUploaderNotMe", []string{"yes"}},
-		{"OrderBy", []string{"uploaded", "updated", "size"}},
+		{"SubmitterNotMe", []string{"yes"}},
+		{"OrderBy", []string{"uploaded", "updated", "size", "title", "platform", "library"}},
 		{"AscDesc", []string{"asc", "desc"}},
 		{"SubscribedMe", []string{"no", "yes"}},
 		{"IsExtreme", []string{"no", "yes", "No", "Yes"}},
 		{"IsContentChange", []string{"no", "yes"}},
 		{"IsFrozen", []string{"no", "yes"}},
+		{"HasAdditionalApplications", []string{"no", "yes"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.field, func(t *testing.T) {

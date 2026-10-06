@@ -72,6 +72,52 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			masterFilters = append(masterFilters, "(library LIKE ?)")
 			masterData = append(masterData, utils.FormatLike(*filter.LibraryPartial))
 		}
+		// Metadata filters use the newest active file, just like Title/Platform.
+		// Column names are constants; all user-supplied values remain parameters.
+		for _, textFilter := range []struct {
+			column string
+			value  *string
+		}{
+			{"series", filter.SeriesPartial},
+			{"developer", filter.DeveloperPartial},
+			{"publisher", filter.PublisherPartial},
+			{"play_mode", filter.PlayModePartial},
+			{"status", filter.StatusPartial},
+			{"version", filter.VersionPartial},
+			{"release_date", filter.ReleaseDatePartial},
+			{"languages", filter.LanguagePartial},
+			{"source", filter.SourcePartial},
+			{"game_notes", filter.GameNotesPartial},
+			{"curation_notes", filter.CurationNotesPartial},
+			{"original_description", filter.OriginalDescriptionPartial},
+		} {
+			if textFilter.value == nil {
+				continue
+			}
+			filters = append(filters, "(meta."+textFilter.column+" LIKE ?)")
+			data = append(data, utils.FormatLike(*textFilter.value))
+			if textFilter.column == "curation_notes" {
+				masterFilters = append(masterFilters, "(1 = 0)") // not stored in legacy metadata
+			} else {
+				masterFilters = append(masterFilters, "("+textFilter.column+" LIKE ?)")
+				masterData = append(masterData, utils.FormatLike(*textFilter.value))
+			}
+		}
+		if filter.TagsPartial != nil {
+			masterColumn := "tags"
+			filters, masterFilters, data, masterData = addMultifilter(
+				"meta.tags", &masterColumn, *filter.TagsPartial, filters, masterFilters, data, masterData)
+		}
+		if filter.HasAdditionalApplications != nil {
+			comparison := " > 0"
+			if *filter.HasAdditionalApplications == "no" {
+				comparison = " = 0"
+			}
+			// Missing/empty lists (SQL NULL, JSON null, []) have no apps. A
+			// missing metadata row is unknown, as are legacy entries without this field.
+			filters = append(filters, "(meta.id IS NOT NULL AND (CASE WHEN JSON_TYPE(meta.additional_applications) = 'ARRAY' THEN JSON_LENGTH(meta.additional_applications) ELSE 0 END)"+comparison+")")
+			masterFilters = append(masterFilters, "(1 = 0)")
+		}
 		if filter.OriginalFilenamePartialAny != nil {
 			filters = append(filters, "(submission_cache.original_filename_sequence LIKE ?)")
 			data = append(data, utils.FormatLike(*filter.OriginalFilenamePartialAny))
@@ -282,13 +328,25 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			}
 			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
 		}
+		if filter.SubmitterNotMe != nil {
+			filters = append(filters, "(oldest_file.fk_user_id != ?)")
+			data = append(data, uid)
+			masterFilters = append(masterFilters, "(1 = 0)") // exclude legacy results
+		}
 		if filter.OrderBy != nil {
-			if *filter.OrderBy == "uploaded" {
+			switch *filter.OrderBy {
+			case "uploaded":
 				currentOrderBy = "created_at"
-			} else if *filter.OrderBy == "updated" {
+			case "updated":
 				currentOrderBy = "updated_at"
-			} else if *filter.OrderBy == "size" {
+			case "size":
 				currentOrderBy = "newest_file_size"
+			case "title":
+				currentOrderBy = "meta_title"
+			case "platform":
+				currentOrderBy = "meta_platform"
+			case "library":
+				currentOrderBy = "meta_library"
 			}
 		}
 		if filter.AscDesc != nil {

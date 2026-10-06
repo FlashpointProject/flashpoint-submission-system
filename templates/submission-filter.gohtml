@@ -56,7 +56,7 @@
             </fieldset>
             <div class="right">
                 <button type="button" class="pure-button pure-button-primary" id="switch-filter-button"
-                        onclick="switchFilterLayout('advanced')">Switch to advanced mode
+                        data-filter-layout-switch onclick="switchFilterLayout('advanced')">Switch to advanced mode
                 </button>
                 <button type="button" class="pure-button pure-button-primary" id="reset-button"
                         onclick="resetFilterForm()">Reset
@@ -276,6 +276,11 @@
 
                         <fieldset>
                             <legend>Filter by My Current State</legend>
+                            <label title="The uploader of the latest version cannot test or verify that version. Earlier uploaders may review a later version uploaded by someone else.">
+                                <input type="checkbox" name="last-uploader-not-me" value="yes"
+                                       id="last-uploader-not-me"
+                                       {{if eq "yes" (unpointify .Filter.LastUploaderNotMe)}}checked{{end}}>
+                                Exclude submissions where I uploaded the latest version</label>
                             <div class="pure-g">
                                 <div class="pure-u-1-2">
                                     <label>
@@ -397,10 +402,10 @@
                         </fieldset>
                         <fieldset>
                             <legend>Filter by my submissions</legend>
-                            <label>
-                                <input type="checkbox" name="last-uploader-not-me" value="yes"
-                                       id="last-uploader-not-me"
-                                       {{if eq "yes" (unpointify .Filter.LastUploaderNotMe)}}checked{{end}}>
+                            <label title="Exclude submissions whose original version I uploaded, even if someone else uploaded a later version.">
+                                <input type="checkbox" name="submitter-not-me" value="yes"
+                                       id="submitter-not-me"
+                                       {{if eq "yes" (unpointify .Filter.SubmitterNotMe)}}checked{{end}}>
                                 Exclude my submissions</label>
                             <label>
                                 <input type="checkbox" name="subscribed-me" value="yes"
@@ -421,6 +426,11 @@
                                                id="order-by-size"
                                                {{if eq "size" (unpointify .Filter.OrderBy)}}checked{{end}}>
                                         By size</label>
+                                    <label for="order-by-platform">
+                                        <input type="radio" name="order-by" value="platform"
+                                               id="order-by-platform"
+                                               {{if eq "platform" (unpointify .Filter.OrderBy)}}checked{{end}}>
+                                        By Platform</label>
                                     <label for="asc-desc">
                                         <input type="radio" name="asc-desc" value="asc"
                                                id="asc-desc-asc"
@@ -433,6 +443,16 @@
                                                id="order-by-updated"
                                                {{if eq "updated" (unpointify .Filter.OrderBy)}}checked{{end}}>
                                         By Updated at</label>
+                                    <label for="order-by-title">
+                                        <input type="radio" name="order-by" value="title"
+                                               id="order-by-title"
+                                               {{if eq "title" (unpointify .Filter.OrderBy)}}checked{{end}}>
+                                        By Title</label>
+                                    <label for="order-by-library">
+                                        <input type="radio" name="order-by" value="library"
+                                               id="order-by-library"
+                                               {{if eq "library" (unpointify .Filter.OrderBy)}}checked{{end}}>
+                                        By Library</label>
                                     <label for="asc-desc">
                                         <input type="radio" name="asc-desc" value="desc"
                                                id="asc-desc-desc"
@@ -444,9 +464,10 @@
                     </div>
                 </div>
             </div>
+            {{template "submission-filter-additional-meta" .}}
             <div class="right">
                 <button type="button" class="pure-button pure-button-primary" id="switch-filter-button"
-                        onclick="switchFilterLayout('simple')">Switch to simple mode
+                        data-filter-layout-switch onclick="switchFilterLayout('simple')">Switch to simple mode
                 </button>
                 <button type="button" class="pure-button pure-button-primary" id="reset-button"
                         onclick="resetFilterForm()">Reset

@@ -70,6 +70,36 @@ use the runner. Old `absolute.env`, `test_data` and developer database container
 are neither used nor deleted by this setup. `make -C integration_tests test` is an
 alias for the full containerized run; the old rebuild/migrate targets are removed.
 
+## Search quick filters
+
+```sh
+bash integration_tests/run.sh -run '^TestSubmission(QuickFilter|UploaderFilter|FilterLayoutSwitch|Search)'
+```
+
+The image includes Node and a locked, test-only jsdom dependency. These tests
+render the production filter template, execute the actual quick-filter JavaScript
+in a DOM, serialize its form, and pass that query through authenticated search
+requests. Multi-user histories upload real fixture archives with a mock validator
+and check review requests as well as search rows and counts. All seven presets
+are checked in both layouts; the original-submitter and latest-uploader options
+are checked separately and together. jsdom checks form behavior, not visual layout.
+Layout-switch tests cover shared edits, cleared selections, retained advanced
+drafts, reset, URL preservation, and switching without submitting a search.
+
+Run the additional metadata search cases with:
+
+```sh
+bash integration_tests/run.sh -run '^TestSubmissionSearchMetadata'
+```
+
+These cover every new text field, case-insensitive partial matching, Tags
+include/exclude combinations, legacy metadata, current versus historical/deleted
+versions, NULL/empty metadata, additional-application lists, combined filters,
+and pagination counts. Form tests serialize the rendered advanced controls and
+send them through authenticated submissions and my-submissions HTTP requests.
+The quick-filter and layout-switch cases also check clearing the new dropdown
+and retaining metadata drafts without changing basic-search scope.
+
 Scope limits: this is a correctness harness, not the production-dump replay or
 performance harness. Lookup seed rows are preserved rather than reconstructed
 after every test, so tests that mutate those rows must restore them. Successful

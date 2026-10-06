@@ -461,6 +461,35 @@ textarea {
     width: 100%;
 }
 
+.additional-metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5em 1.25em;
+}
+
+.additional-metadata-grid input,
+.additional-metadata-grid select {
+    width: 100%;
+    min-width: 0;
+}
+
+.additional-metadata-help {
+    font-size: 0.875em;
+    margin-top: 0;
+}
+
+@media (max-width: 620px) {
+    .additional-metadata-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 430px) {
+    .additional-metadata-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .form-column-checkboxes label {
     display: initial;
     padding-right: 1em;
