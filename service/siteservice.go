@@ -925,6 +925,10 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 	}
 	defer dbs.Rollback()
 
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
+
 	var pgdbs database.PGDBSession
 	openPGSession := func() (database.PGDBSession, error) {
 		var err error
@@ -1330,18 +1334,35 @@ func (s *SiteService) GetSessionAuthInfo(ctx context.Context, key string) (*type
 func (s *SiteService) SoftDeleteSubmissionFile(ctx context.Context, sfid int64, deleteReason string) error {
 	uid := utils.UserID(ctx)
 
+	sid, err := s.submissionIDForDeletion(ctx, sfid, true)
+	if err != nil {
+		return err
+	}
+
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
+
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
 	defer pgdbs.Rollback()
+
+	var activeID int64
+	if err := dbs.Tx().QueryRowContext(ctx, "SELECT id FROM submission_file WHERE id = ? AND deleted_at IS NULL", sfid).Scan(&activeID); err != nil {
+		if err == sql.ErrNoRows {
+			return perr("file not found", http.StatusNotFound)
+		}
+		return dberr(err)
+	}
 
 	sfs, err := s.dal.GetSubmissionFiles(dbs, []int64{sfid})
 	if err != nil {
@@ -1350,7 +1371,7 @@ func (s *SiteService) SoftDeleteSubmissionFile(ctx context.Context, sfid int64, 
 	}
 
 	authorID := sfs[0].SubmitterID
-	sid := sfs[0].SubmissionID
+	sid = sfs[0].SubmissionID
 
 	if err := s.dal.SoftDeleteSubmissionFile(dbs, sfid, deleteReason); err != nil {
 		if err.Error() == constants.ErrorCannotDeleteLastSubmissionFile {
@@ -1393,6 +1414,10 @@ func (s *SiteService) SoftDeleteSubmission(ctx context.Context, sid int64, delet
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -1440,18 +1465,35 @@ func (s *SiteService) SoftDeleteSubmission(ctx context.Context, sid int64, delet
 func (s *SiteService) SoftDeleteComment(ctx context.Context, cid int64, deleteReason string) error {
 	uid := utils.UserID(ctx)
 
+	sid, err := s.submissionIDForDeletion(ctx, cid, false)
+	if err != nil {
+		return err
+	}
+
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
+
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return dberr(err)
 	}
 	defer pgdbs.Rollback()
+
+	var activeID int64
+	if err := dbs.Tx().QueryRowContext(ctx, "SELECT id FROM comment WHERE id = ? AND deleted_at IS NULL", cid).Scan(&activeID); err != nil {
+		if err == sql.ErrNoRows {
+			return perr("comment not found", http.StatusNotFound)
+		}
+		return dberr(err)
+	}
 
 	c, err := s.dal.GetCommentByID(dbs, cid)
 	if err != nil {
@@ -1503,6 +1545,10 @@ func (s *SiteService) OverrideBot(ctx context.Context, sid int64) error {
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
 
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
@@ -2251,7 +2297,14 @@ func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, ui
 		}
 	}()
 
-	userRoles, err := s.dal.GetDiscordUserRoles(dbs, uid)
+	// Read roles separately so the mutation snapshot starts after the parent lock.
+	roleSession, err := s.dal.NewSession(ctx)
+	if err != nil {
+		s.SSK.SetFailed(tempName, "internal error")
+		return dberr(err)
+	}
+	userRoles, err := s.dal.GetDiscordUserRoles(roleSession, uid)
+	roleSession.Rollback()
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		s.SSK.SetFailed(tempName, "internal error")
@@ -2337,50 +2390,6 @@ func provideArchiveForIndexing(filePath string, baseUrl string) ([]*types.Indexe
 	return ir.Files, ir.IndexingErrors, nil
 }
 
-func (s *SiteService) RecomputeSubmissionCacheAll(ctx context.Context) {
-
-	var perPage int64 = 10000
-	var count int64 = 1
-	var recomputedCount int64 = 0
-
-	for recomputedCount < count {
-		var submissions []*types.ExtendedSubmission
-		var err error
-		submissions, count, err = s.SearchSubmissions(ctx, &types.SubmissionsFilter{ResultsPerPage: &perPage, ExcludeLegacy: true})
-		if err != nil {
-			utils.LogCtx(ctx).Error(err)
-			return
-		}
-		utils.LogCtx(ctx).WithField("perPage", perPage).WithField("recomputedCount", recomputedCount).WithField("totalSubmissions", count).Debug("processing a page of submissions")
-
-		for _, submission := range submissions {
-			func() {
-				utils.LogCtx(ctx).WithField("submissionID", submission.SubmissionID).Debug("recomputing cache for submission")
-
-				dbs, err := s.dal.NewSession(ctx)
-				if err != nil {
-					utils.LogCtx(ctx).Error(err)
-					return
-				}
-				defer dbs.Rollback()
-
-				err = s.dal.UpdateSubmissionCacheTable(dbs, submission.SubmissionID)
-				if err != nil {
-					utils.LogCtx(ctx).Error(err)
-					return
-				}
-
-				if err := dbs.Commit(); err != nil {
-					utils.LogCtx(ctx).Error(err)
-					return
-				}
-			}()
-		}
-
-		recomputedCount += count
-	}
-}
-
 func (s *SiteService) ForceApproveSubmission(ctx context.Context, sid int64) error {
 	uid := utils.UserID(ctx)
 	dbs, err := s.dal.NewSession(ctx)
@@ -2389,6 +2398,10 @@ func (s *SiteService) ForceApproveSubmission(ctx context.Context, sid int64) err
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -2454,6 +2467,10 @@ func (s *SiteService) ForceVerifySubmission(ctx context.Context, sid int64) erro
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -3525,6 +3542,10 @@ func (s *SiteService) FreezeSubmission(ctx context.Context, sid int64) error {
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -3578,6 +3599,10 @@ func (s *SiteService) UnfreezeSubmission(ctx context.Context, sid int64) error {
 		return dberr(err)
 	}
 	defer dbs.Rollback()
+
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
 	pgdbs, err := s.pgdal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)

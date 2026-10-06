@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"sync"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 )
@@ -136,6 +137,8 @@ type ReadCloserInformerProvider interface {
 }
 
 type fileReadCloserInformer struct {
+	// Upload progress is polled concurrently with Read.
+	mu                 sync.Mutex
 	uid                int64
 	fileID             string
 	rsu                *ResumableUploadService
@@ -163,6 +166,8 @@ func (rsu *ResumableUploadService) NewFileReader(uid int64, fileID string, chunk
 }
 
 func (fr *fileReadCloserInformer) Read(buf []byte) (n int, err error) {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
 	// case 0: init the reader
 	if fr.currentChunkNumber == 0 {
 		fr.currentChunkNumber++
@@ -228,6 +233,8 @@ func (fr *fileReadCloserInformer) Close() error {
 }
 
 func (fr *fileReadCloserInformer) GetFractionRead() float32 {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
 	return float32(fr.currentChunkNumber) / float32(fr.chunkCount)
 }
 

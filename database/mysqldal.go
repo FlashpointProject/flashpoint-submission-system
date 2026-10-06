@@ -54,7 +54,7 @@ type MysqlSession struct {
 
 // NewSession begins a transaction
 func (d *mysqlDAL) NewSession(ctx context.Context) (DBSession, error) {
-	tx, err := d.db.Begin()
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +457,7 @@ func (d *mysqlDAL) GetExtendedCommentsBySubmissionID(dbs DBSession, sid int64) (
 		JOIN discord_user ON discord_user.id = fk_user_id
 		WHERE fk_submission_id=? 
 		AND comment.deleted_at IS NULL
-		ORDER BY created_at;`, sid)
+		ORDER BY comment.created_at ASC, comment.id ASC;`, sid)
 	if err != nil {
 		return nil, err
 	}

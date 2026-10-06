@@ -123,6 +123,7 @@ type ExtendedSubmissionFile struct {
 }
 
 type ExtendedSubmission struct {
+	GameUUID                    *string // Legacy game identity; nil for submission rows.
 	SubmissionID                int64
 	SubmissionLevel             string
 	SubmitterID                 int64     // oldest file
@@ -308,12 +309,22 @@ func (sf *SubmissionsFilter) Validate() error {
 	if sf.VerificationStatusUser != nil && *sf.VerificationStatusUser != "no" && *sf.VerificationStatusUser != "yes" {
 		return fmt.Errorf("invalid verificaton-status-user")
 	}
-	if sf.AssignedStatusUserID != nil && !(sf.AssignedStatusTestingUser != nil ||
+	if sf.AssignedStatusUserID == nil && (sf.AssignedStatusTestingUser != nil ||
 		sf.AssignedStatusVerificationUser != nil ||
 		sf.RequestedChangedStatusUser != nil ||
 		sf.ApprovalsStatusUser != nil ||
 		sf.VerificationStatusUser != nil) {
 		return fmt.Errorf("assigned-status-user-id must be set when any of the relevant *user filters are set")
+	}
+
+	if sf.IsExtreme != nil && *sf.IsExtreme != "no" && *sf.IsExtreme != "yes" && *sf.IsExtreme != "No" && *sf.IsExtreme != "Yes" {
+		return fmt.Errorf("invalid is-extreme")
+	}
+	if sf.IsContentChange != nil && *sf.IsContentChange != "no" && *sf.IsContentChange != "yes" {
+		return fmt.Errorf("invalid is-content-change")
+	}
+	if sf.IsFrozen != nil && *sf.IsFrozen != "no" && *sf.IsFrozen != "yes" {
+		return fmt.Errorf("invalid is-frozen")
 	}
 
 	if sf.LastUploaderNotMe != nil && *sf.LastUploaderNotMe != "yes" {
