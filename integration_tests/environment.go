@@ -309,7 +309,7 @@ func clearExistingPostgresTestDB(conf *config.Config) error {
 		FROM information_schema.tables
 		WHERE table_schema = 'public'
 			AND table_type = 'BASE TABLE'
-			AND table_name NOT IN ('schema_migrations','action','curation_image_type','submission_level','submission_notification_type')
+			AND table_name <> 'schema_migrations'
 		ORDER BY table_name`)
 	if err != nil {
 		return err
@@ -338,16 +338,5 @@ func clearExistingPostgresTestDB(conf *config.Config) error {
 	}
 
 	_, err = pool.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", strings.Join(qualifiedTables, ", ")))
-	if err != nil {
-		return err
-	}
-	// Restoring only the two built-in users avoids preserving stale user state.
-	var hasUsers bool
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.discord_user') IS NOT NULL").Scan(&hasUsers); err != nil {
-		return err
-	}
-	if hasUsers {
-		_, err = pool.Exec(ctx, `INSERT INTO discord_user(id,username,avatar,discriminator,public_flags,flags,locale,mfa_enabled) VALUES ($1,'RedMinima','156dd40e0c72ed8e84034b53aad32af4','1337',0,0,'en_US',false),($2,'FPFSS','43989404743f92a70f293df092a59034','1337',0,0,'en_US',false)`, constants.ValidatorID, constants.SystemID)
-	}
 	return err
 }

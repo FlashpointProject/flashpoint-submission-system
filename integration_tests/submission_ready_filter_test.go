@@ -43,30 +43,22 @@ func TestSubmissionReadyFilterTransitions(t *testing.T) {
 	}
 	check := func(t *testing.T, filter *types.SubmissionsFilter, want *types.ExtendedSubmission) {
 		t.Helper()
-		modes := []string{"auto"}
+		ctx := context.WithValue(f.Ctx, utils.CtxKeys.UserID, int64(1004))
+		session, err := f.DB.NewSession(ctx)
+		require.NoError(t, err)
+		defer session.Rollback()
+		rows, count, err := f.DB.SearchSubmissions(session, filter)
+		require.NoError(t, err)
 
-		for _, mode := range modes {
-			ctx := context.WithValue(f.Ctx, utils.CtxKeys.UserID, int64(1004))
-			session, err := f.DB.NewSession(ctx)
-			require.NoError(t, err)
-			defer session.Rollback()
-			if mode != "auto" {
-				_, err = session.Tx().ExecContext(ctx, "SET LOCAL plan_cache_mode=force_generic_plan")
-				require.NoError(t, err)
-			}
-			rows, count, err := f.DB.SearchSubmissions(session, filter)
-			require.NoError(t, err, mode)
-
-			if want == nil {
-				require.Empty(t, rows, mode)
-				require.Zero(t, count, mode)
-			} else {
-				require.EqualValues(t, 1, count, mode)
-				require.Len(t, rows, 1, mode)
-				require.Equal(t, canonicalSearchSubmission(want), canonicalSearchSubmission(rows[0]), mode)
-			}
-			require.NoError(t, session.Rollback())
+		if want == nil {
+			require.Empty(t, rows)
+			require.Zero(t, count)
+		} else {
+			require.EqualValues(t, 1, count)
+			require.Len(t, rows, 1)
+			require.Equal(t, canonicalSearchSubmission(want), canonicalSearchSubmission(rows[0]))
 		}
+		require.NoError(t, session.Rollback())
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

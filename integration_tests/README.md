@@ -78,3 +78,62 @@ not yet have an explicit worker-drain API. Fail-fast limits subsequent contamina
 worker lifecycle coverage is follow-up work before introducing parallel fixtures
 or injected upload-worker failures.
 
+## Generated state histories
+
+The generated tests complement the hand-written histories and real-service tests.
+They use an independent Go replay model to check evolving cache/search state across
+several users and submissions. Default histories stay within 50 comments and four
+upload versions per submission; this is correctness coverage, not a load test.
+
+Run the pure model/corpus tests without databases:
+
+```sh
+go test ./integration_tests -run '^Test(SubmissionHistoryModel|SubmissionGeneratedHistoryCorpus)$' -count=1
+```
+
+Run the default SQL corpus or replay one seed:
+
+```sh
+bash integration_tests/run.sh -run '^TestSubmissionGeneratedHistories$'
+bash integration_tests/run.sh -run '^TestSubmissionGeneratedHistories$' -args -history-seed=42
+```
+
+A failure logs the seed, operation index and `HISTORY_TRACE_JSON` containing the
+exact operation prefix in `tests.jsonl`. In Docker it also saves a
+`history-failure-seed-N-step-N.json` file alongside the run artifacts. Copy that
+JSON array under
+`integration_tests/testdata/histories/` to replay it independently of future RNG
+or generator changes, and reduce it into a focused regression when diagnosing a bug:
+
+```sh
+bash integration_tests/run.sh -run '^TestSubmissionGeneratedHistories$' -args -history-replay=integration_tests/testdata/histories/example.json
+```
+
+That narrow JSON directory is included in the Docker build; arbitrary host paths
+and the ignored results directories are not. Replay traces use the test fixture's
+three submissions and four human user IDs plus the validator. Preserve any source
+operations that later deletions refer to when reducing a trace.
+
+## Notifications and controlled concurrency
+
+Run notification SQL contracts and controlled mutation overlaps with:
+
+```sh
+bash integration_tests/run.sh -run '^TestNotificationQueries'
+bash integration_tests/run.sh -race -count=3 -run '^TestSubmissionConcurrency'
+bash integration_tests/run.sh -race -run '^TestSubmissionQuota'
+```
+
+The trigger barriers use MariaDB named locks to control arrival and release.
+A separate observer checks waiting parent-lock statements in PROCESSLIST.
+Cleanup releases locks and joins workers before closing pools. Go race detection
+checks memory access; history/cache/search assertions check SQL behavior.
+
+Tests named `CurrentBehavior` document remaining MariaDB limitations, including
+repeated subscription/settings rows. Passing these witnesses does not mean the
+behavior is desirable. The runner always uses MariaDB for submissions and the
+existing separate PostgreSQL database for launcher metadata.
+
+The MariaDB fixture uses production's `utf8mb4_unicode_ci` defaults and the
+historical OAuth columns' `utf8mb4_general_ci` exception. Every reset checks these
+collations as well as database identities and migration versions.
