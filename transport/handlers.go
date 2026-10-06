@@ -1377,7 +1377,7 @@ func (a *App) HandleMySubmissionsPage(w http.ResponseWriter, r *http.Request) {
 
 	if err := filter.Validate(); err != nil {
 		utils.LogCtx(ctx).Error(err)
-		writeError(ctx, w, err)
+		writeError(ctx, w, perr(err.Error(), http.StatusBadRequest))
 		return
 	}
 

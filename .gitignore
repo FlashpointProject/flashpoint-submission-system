@@ -35,3 +35,7 @@ integration_tests/templates
 # Isolated test and snapshot artifacts
 integration_tests/results/
 snapshot-results/
+
+# Local production snapshots
+/fpfss-*-dump-*.sql.zst
+**/__pycache__/
