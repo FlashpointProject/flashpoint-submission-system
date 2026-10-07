@@ -236,7 +236,7 @@ func TestApplicationCacheLoginRefreshesRolesAndProfile(t *testing.T) {
 	const uid = int64(100009501)
 	token := createTestUser(t, ctx, l, app, db, pgdb, uid, []int64{roleIDModerator})
 	ctx = addContextValues(ctx, l, uid, "role-cache")
-	allowed := getWithCookie(t, l, app, createTestCookie(t, l, token), "/web/recommendation-playground")
+	allowed := getWithCookie(t, l, app, createTestCookie(t, l, token), "/api/activity-events")
 	require.Equal(t, http.StatusOK, allowed.Code, allowed.Body.String())
 	roles, err := app.Service.GetUserRoles(ctx, uid)
 	require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestApplicationCacheLoginRefreshesRolesAndProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "refreshed login", profile.Username)
 	// The existing session now receives the new permissions too.
-	denied := getWithCookie(t, l, app, createTestCookie(t, l, token), "/web/recommendation-playground")
+	denied := getWithCookie(t, l, app, createTestCookie(t, l, token), "/api/activity-events")
 	require.Equal(t, http.StatusUnauthorized, denied.Code, denied.Body.String())
 }
 

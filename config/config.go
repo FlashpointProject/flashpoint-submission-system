@@ -50,7 +50,6 @@ type Config struct {
 	DeletedImagesDir              string
 	FlashpointSourceOnlyMode      bool
 	FlashpointSourceOnlyAdminMode bool
-	RecommendationEngineURL       string
 	DoNotUnfreezeGameList         []string
 	IndexServiceUrl               string
 }
@@ -153,7 +152,6 @@ func GetConfig(l *logrus.Entry) *Config {
 		DeletedImagesDir:              EnvString("DELETED_IMAGES_PATH"),
 		FlashpointSourceOnlyMode:      EnvBool("FLASHPOINT_SOURCE_ONLY_MODE"),
 		FlashpointSourceOnlyAdminMode: EnvBool("FLASHPOINT_SOURCE_ONLY_ADMIN_MODE"),
-		RecommendationEngineURL:       EnvString("RECOMMENDATION_ENGINE_URL"),
 		DoNotUnfreezeGameList:         EnvJSONList("DO_NOT_UNFREEZE_GAME_LIST"),
 		IndexServiceUrl:               EnvString("INDEX_SERVICE_URL"),
 	}
