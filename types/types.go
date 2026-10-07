@@ -696,6 +696,7 @@ type ValidatorTagResponse struct {
 }
 
 type ResumableParams struct {
+	ResumableRetry            int    `schema:"resumableRetry"`
 	ResumableChunkNumber      int    `schema:"resumableChunkNumber"`
 	ResumableChunkSize        uint64 `schema:"resumableChunkSize"`
 	ResumableTotalSize        int64  `schema:"resumableTotalSize"`

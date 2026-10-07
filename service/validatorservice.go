@@ -13,14 +13,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	"github.com/kofalt/go-memoize"
+	"sync"
 )
 
-var cache = memoize.NewMemoizer(10*time.Minute, 60*time.Minute)
-
 type curationValidator struct {
+	tagsOnce           sync.Once
+	tags               *appcache.Cache[[]types.Tag]
 	validatorServerURL string
 }
 
@@ -205,20 +206,11 @@ func writeApplyEditMultipart(writer *multipart.Writer, editCurationMeta *types.E
 }
 
 func (c *curationValidator) GetTags(ctx context.Context) ([]types.Tag, error) {
-	f := func() (interface{}, error) {
-		return c.getTags(ctx)
-	}
-
-	resp, err, cached := cache.Memoize("GetTags", f)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, err
-	}
-
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("getting tags from validator")
-
-	tags := resp.([]types.Tag)
-	return tags, nil
+	c.tagsOnce.Do(func() { c.tags = appcache.New[[]types.Tag](&appcache.Coordinator{}, 1, 32<<20) })
+	return c.tags.Get(ctx, "tags", func(ctx context.Context) (appcache.Snapshot[[]types.Tag], error) {
+		tags, err := c.getTags(ctx)
+		return appcache.Snapshot[[]types.Tag]{Value: tags, Expires: time.Now().Add(10 * time.Minute)}, err
+	})
 }
 
 func (c *curationValidator) getTags(ctx context.Context) ([]types.Tag, error) {

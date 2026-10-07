@@ -178,12 +178,14 @@ func TestUserStatisticsBulkHTTPActivityAndRoles(t *testing.T) {
 	require.Equal(t, "User", rows["104"].Role)
 	require.Equal(t, "User", rows["1002"].Role)
 	require.Equal(t, "Staff", rows["1003"].Role)
-	// Auth is checked even for a populated shared cache; page loading needs
-	// only this endpoint and is accessible to the same roles as before.
+	// Shared statistics keep their generation time, but every request checks permissions.
 	for _, auth := range []*http.Cookie{cookie, createTestCookie(t, l, trial), createTestCookie(t, l, audit)} {
 		got := getWithCookie(t, l, app, auth, "/api/user-statistics/all")
 		require.Equal(t, http.StatusOK, got.Code, got.Body.String())
-		require.JSONEq(t, rr.Body.String(), got.Body.String())
+		var fresh types.UserStatisticsResponse
+		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &fresh))
+		require.Equal(t, data.Users, fresh.Users)
+		require.Equal(t, data.GeneratedAt, fresh.GeneratedAt)
 	}
 	req := httptest.NewRequest("GET", "/api/user-statistics/all", nil)
 	denied := httptest.NewRecorder()

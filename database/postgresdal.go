@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
 	"io"
 	"log"
 	"os"
@@ -26,12 +27,18 @@ import (
 )
 
 type postgresDAL struct {
-	db *pgxpool.Pool
+	cache *appcache.Coordinator
+	db    *pgxpool.Pool
 }
 
-func NewPostgresDAL(conn *pgxpool.Pool) *postgresDAL {
+func NewPostgresDAL(conn *pgxpool.Pool, caches ...*appcache.Coordinator) *postgresDAL {
+	var cache *appcache.Coordinator
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
 	return &postgresDAL{
-		db: conn,
+		db:    conn,
+		cache: cache,
 	}
 }
 
@@ -56,6 +63,8 @@ func OpenPostgresDB(l *logrus.Entry, conf *config.Config) *pgxpool.Pool {
 }
 
 type PostgresSession struct {
+	cache       *appcache.Coordinator
+	changes     []appcache.Dependency
 	context     context.Context
 	transaction pgx.Tx
 }
@@ -93,11 +102,12 @@ func (d *postgresDAL) NewSession(ctx context.Context) (PGDBSession, error) {
 	return &PostgresSession{
 		context:     ctx,
 		transaction: tx,
+		cache:       d.cache,
 	}, nil
 }
 
 func (dbs *PostgresSession) Commit() error {
-	return dbs.transaction.Commit(dbs.context)
+	return dbs.cache.Commit(dbs.changes, func() error { return dbs.transaction.Commit(dbs.context) })
 }
 
 func (dbs *PostgresSession) Rollback() error {
@@ -794,6 +804,7 @@ func (d *postgresDAL) GetGameData(dbs PGDBSession, gameId string, date int64) (*
 }
 
 func (d *postgresDAL) SaveGameData(dbs PGDBSession, gameId string, date int64, gameData *types.GameData) error {
+	changed(dbs, "metadata")
 	existingData, err := d.GetGameData(dbs, gameId, date)
 	if err != nil {
 		return err
@@ -923,6 +934,7 @@ func (d *postgresDAL) GetIndexMatchesPath(dbs PGDBSession, paths []string) ([]*t
 }
 
 func (d *postgresDAL) SaveTag(dbs PGDBSession, tag *types.Tag, uid int64) error {
+	changed(dbs, "metadata")
 	// Store existing primary alias, update redundant game fields if changes later
 	existingTag, err := d.GetTag(dbs, tag.ID)
 	if err != nil {
@@ -1042,6 +1054,7 @@ func (d *postgresDAL) SaveTag(dbs PGDBSession, tag *types.Tag, uid int64) error 
 }
 
 func (d *postgresDAL) SaveGame(dbs PGDBSession, game *types.Game, uid int64) error {
+	changed(dbs, "metadata")
 	newTags := make([]*types.Tag, 0)
 	newPlats := make([]*types.Platform, 0)
 
@@ -1161,6 +1174,7 @@ func (d *postgresDAL) SaveGame(dbs PGDBSession, game *types.Game, uid int64) err
 }
 
 func (d *postgresDAL) DeveloperImportDatabaseJson(dbs PGDBSession, dump *types.LauncherDump) error {
+	changed(dbs, "metadata")
 	// Delete all existing entries
 	_, err := dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM tag WHERE 1=1`)
 	_, err = dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM tag_alias WHERE 1=1`)
@@ -1591,6 +1605,7 @@ func (d *postgresDAL) GetTagCategory(dbs PGDBSession, categoryId int64) (*types.
 }
 
 func (d *postgresDAL) GetOrCreateTagCategory(dbs PGDBSession, categoryName string) (*types.TagCategory, error) {
+	changed(dbs, "metadata")
 	categoryId, err := GetCategoryID(dbs, categoryName)
 	if err != nil {
 		return nil, err
@@ -1614,6 +1629,7 @@ func (d *postgresDAL) GetOrCreateTagCategory(dbs PGDBSession, categoryName strin
 }
 
 func (d *postgresDAL) GetOrCreatePlatform(dbs PGDBSession, platformName string, reason string, uid int64) (*types.Platform, error) {
+	changed(dbs, "metadata")
 	platformId, err := GetPlatformID(dbs, platformName)
 	if err != nil {
 		return nil, err
@@ -1652,6 +1668,7 @@ func (d *postgresDAL) GetOrCreatePlatform(dbs PGDBSession, platformName string, 
 }
 
 func (d *postgresDAL) GetOrCreateTag(dbs PGDBSession, tagName string, tagCategory string, reason string, uid int64) (*types.Tag, error) {
+	changed(dbs, "metadata")
 	// Find tag id if already exists
 	utils.LogCtx(dbs.Ctx()).Debug("Getting tag id if exists")
 	tagId, err := GetTagID(dbs, tagName)
@@ -1701,6 +1718,7 @@ func (d *postgresDAL) GetOrCreateTag(dbs PGDBSession, tagName string, tagCategor
 }
 
 func (d *postgresDAL) ApplyGamePatch(dbs PGDBSession, uid int64, game *types.Game, patch *types.GameContentPatch, addApps []*types.CurationAdditionalApp) error {
+	changed(dbs, "metadata")
 	if addApps != nil {
 		// Clear existing add apps
 		_, err := dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM additional_app
@@ -1922,6 +1940,7 @@ func (d *postgresDAL) IndexerMarkFailure(ctx context.Context, gameId string, zip
 }
 
 func (d *postgresDAL) AddGameData(dbs PGDBSession, uid int64, gameId string, vr *types.ValidatorRepackResponse) (*types.GameData, error) {
+	changed(dbs, "metadata")
 	// DO EXPENSIVE OPERATIONS FIRST
 
 	// Game Data - Get SHA256
@@ -1976,6 +1995,7 @@ func (d *postgresDAL) AddGameData(dbs PGDBSession, uid int64, gameId string, vr 
 }
 
 func (d *postgresDAL) AddSubmissionFromValidator(dbs PGDBSession, uid int64, vr *types.ValidatorRepackResponse, frozen bool) (*types.Game, error) {
+	changed(dbs, "metadata")
 	// DO EXPENSIVE OPERATIONS FIRST
 
 	// Game Data - Get SHA256
@@ -2229,6 +2249,7 @@ func (d *postgresDAL) GetTagRevisionInfo(dbs PGDBSession, tagId int64) ([]*types
 
 func (d *postgresDAL) DeleteGame(dbs PGDBSession, gameId string, uid int64, reason string, imagesPath string,
 	gamesPath string, deletedImagesPath string, deletedGamesPath string, frozenGamesPath string) error {
+	changed(dbs, "metadata")
 	// Get Game Data
 	game, err := d.GetGame(dbs, gameId)
 	if err != nil {
@@ -2291,6 +2312,7 @@ func (d *postgresDAL) DeleteGame(dbs PGDBSession, gameId string, uid int64, reas
 
 func (d *postgresDAL) RestoreGame(dbs PGDBSession, gameId string, uid int64, reason string, imagesPath string,
 	gamesPath string, deletedImagesPath string, deletedGamesPath string, frozenGamesPath string) error {
+	changed(dbs, "metadata")
 	// Get Game Data
 	game, err := d.GetGame(dbs, gameId)
 	if err != nil {
@@ -2351,6 +2373,7 @@ func (d *postgresDAL) RestoreGame(dbs PGDBSession, gameId string, uid int64, rea
 }
 
 func (d *postgresDAL) UpdateTagsFromTagsList(dbs PGDBSession, tagsList []types.Tag) error {
+	changed(dbs, "metadata")
 	conf := config.GetConfig(nil)
 	for _, tag := range tagsList {
 		_, err := dbs.Tx().Exec(dbs.Ctx(), `UPDATE tag

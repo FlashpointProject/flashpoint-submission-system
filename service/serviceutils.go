@@ -40,9 +40,14 @@ type SubmissionStatusKeeper struct {
 	sync.Mutex
 }
 
+func (s *SubmissionStatusKeeper) Remove(name string) { s.Lock(); defer s.Unlock(); delete(s.m, name) }
+
 func (s *SubmissionStatusKeeper) SetReceived(tempName string) {
 	s.Lock()
 	defer s.Unlock()
+	if s.m == nil {
+		s.m = make(map[string]*types.SubmissionStatus)
+	}
 	s.m[tempName] = &types.SubmissionStatus{Status: constants.SubmissionStatusReceived}
 }
 

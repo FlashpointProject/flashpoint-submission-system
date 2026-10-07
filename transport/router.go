@@ -904,6 +904,9 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleRecomputeSubmissionCacheAll, types.AuthScopeAll), isGod), false))).
 		Methods("POST")
 
+	router.Handle("/api/internal/application-cache-stats",
+		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(a.RequestScope(a.HandleApplicationCacheStats, types.AuthScopeAll), isGod), false))).Methods("GET")
+
 	router.Handle("/api/internal/delete-user-sessions",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleDeleteUserSessions, types.AuthScopeAll), isGod), false))).
 		Methods("POST")

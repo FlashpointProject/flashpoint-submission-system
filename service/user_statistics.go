@@ -3,84 +3,37 @@ package service
 import (
 	"context"
 	"strconv"
-	"sync"
 	"time"
 
+	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
 	"github.com/FlashpointProject/flashpoint-submission-system/clients"
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
-	"golang.org/x/sync/singleflight"
 )
 
-const userStatisticsTTL = time.Minute
-const userStatisticsTimeout = 30 * time.Second
+// Statistics may be up to ten minutes old; ordinary writes do not invalidate them.
+const statisticsCacheTTL = 10 * time.Minute
 
-// Cached snapshots are immutable after publication and belong to this service,
-// not the process-wide page cache. Never cache a failed or partial refresh.
-type userStatisticsCache struct {
-	mu       sync.Mutex
-	snapshot *types.UserStatisticsResponse
-	expires  time.Time
-	refresh  singleflight.Group
-}
-
-func (c *userStatisticsCache) fresh() *types.UserStatisticsResponse {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if time.Now().Before(c.expires) {
-		return c.snapshot
-	}
-	return nil
-}
-
-func (c *userStatisticsCache) get(ctx context.Context, load func(context.Context) ([]*types.UserStatistics, error)) (*types.UserStatisticsResponse, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if snapshot := c.fresh(); snapshot != nil {
-		return snapshot, nil
-	}
-	result := c.refresh.DoChan("all", func() (interface{}, error) {
-		if snapshot := c.fresh(); snapshot != nil {
-			return snapshot, nil
-		}
-		// A disconnected browser must not cancel a refresh shared by others.
-		// It still has a fixed deadline, and each waiter can cancel independently.
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), userStatisticsTimeout)
-		defer cancel()
-		users, err := load(refreshCtx)
+func (s *SiteService) GetAllUserStatistics(ctx context.Context) (*types.UserStatisticsResponse, error) {
+	return s.readCaches().allUserStatistics.Get(ctx, "all", func(ctx context.Context) (appcache.Snapshot[*types.UserStatisticsResponse], error) {
+		users, err := s.loadAllUserStatistics(ctx)
 		if err != nil {
-			return nil, err
-		}
-		if err := refreshCtx.Err(); err != nil {
-			return nil, err
+			return appcache.Snapshot[*types.UserStatisticsResponse]{}, err
 		}
 		if users == nil {
 			users = make([]*types.UserStatistics, 0)
 		}
-		snapshot := &types.UserStatisticsResponse{Users: users, GeneratedAt: time.Now().UTC()}
-		c.mu.Lock()
-		c.snapshot = snapshot
-		c.expires = snapshot.GeneratedAt.Add(userStatisticsTTL)
-		c.mu.Unlock()
-		return snapshot, nil
+		generated := time.Now().UTC()
+		return appcache.Snapshot[*types.UserStatisticsResponse]{Value: &types.UserStatisticsResponse{Users: users, GeneratedAt: generated}, Expires: generated.Add(statisticsCacheTTL)}, nil
 	})
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case r := <-result:
-		if r.Err != nil {
-			return nil, r.Err
-		}
-		return r.Val.(*types.UserStatisticsResponse), nil
-	}
-}
-
-func (s *SiteService) GetAllUserStatistics(ctx context.Context) (*types.UserStatisticsResponse, error) {
-	return s.userStatisticsCache.get(ctx, s.loadAllUserStatistics)
 }
 
 func (s *SiteService) loadAllUserStatistics(ctx context.Context) ([]*types.UserStatistics, error) {
+	return s.loadUserStatistics(ctx, nil)
+}
+func (s *SiteService) loadUserStatistics(ctx context.Context, uid *int64) ([]*types.UserStatistics, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	// Release MariaDB before acquiring PostgreSQL; neither transaction spans
 	// work on the other database.
 	users, err := func() ([]*types.UserStatistics, error) {
@@ -89,6 +42,9 @@ func (s *SiteService) loadAllUserStatistics(ctx context.Context) ([]*types.UserS
 			return nil, err
 		}
 		defer dbs.Rollback()
+		if uid != nil {
+			return s.dal.GetUserStatisticsAggregate(dbs, *uid)
+		}
 		return s.dal.GetAllUserStatistics(dbs)
 	}()
 	if err != nil {

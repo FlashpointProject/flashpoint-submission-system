@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"html/template"
 	"math/rand"
 	"net/http"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kofalt/go-memoize"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/config"
 	"github.com/FlashpointProject/flashpoint-submission-system/logging"
@@ -32,15 +32,16 @@ import (
 
 // App is App
 type App struct {
-	Conf                *config.Config
-	CC                  utils.CookieCutter
-	Service             *service.SiteService
-	decoder             *schema.Decoder
-	authMiddlewareCache *memoize.Memoizer
-	DFStorage           *DeviceFlowStorage
-	AuthCodeStorage     *AuthCodeStorage
-	AdminModePassword   string
-	Mux                 *mux.Router
+	templateMu        sync.Mutex
+	templates         map[string]*template.Template
+	Conf              *config.Config
+	CC                utils.CookieCutter
+	Service           *service.SiteService
+	decoder           *schema.Decoder
+	DFStorage         *DeviceFlowStorage
+	AuthCodeStorage   *AuthCodeStorage
+	AdminModePassword string
+	Mux               *mux.Router
 }
 
 func (a *App) InitializeMux() {
@@ -50,8 +51,6 @@ func (a *App) InitializeMux() {
 	decoder.ZeroEmpty(false)
 	decoder.IgnoreUnknownKeys(true)
 	a.decoder = decoder
-
-	a.authMiddlewareCache = memoize.NewMemoizer(5*time.Second, 60*time.Minute)
 
 	a.setupRoutes(router)
 	a.Mux = router
@@ -112,9 +111,8 @@ func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Poo
 			conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.IsDev,
 			rsu, conf.ArchiveIndexerServerURL,
 			conf.DataPacksDir),
-		decoder:             decoder,
-		authMiddlewareCache: memoize.NewMemoizer(5*time.Second, 60*time.Minute),
-		AdminModePassword:   adminPass,
+		decoder:           decoder,
+		AdminModePassword: adminPass,
 	}
 
 	ctx := context.Background()

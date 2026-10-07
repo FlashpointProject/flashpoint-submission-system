@@ -53,6 +53,6 @@ func TestSubmissionPageDoesNotOpenPostgresWhenValidatorFails(t *testing.T) {
 	_, err := s.GetViewSubmissionPageData(context.Background(), 0, 123)
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "submission not found"), err)
-	require.Equal(t, 2, dal.sessions)
+	require.Equal(t, 1, dal.sessions, "missing submission stops before viewer data or enrichment")
 	require.False(t, pgdal.opened)
 }

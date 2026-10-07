@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
 	"strings"
 	"time"
 
@@ -18,12 +19,18 @@ import (
 )
 
 type mysqlDAL struct {
-	db *sql.DB
+	cache *appcache.Coordinator
+	db    *sql.DB
 }
 
-func NewMysqlDAL(conn *sql.DB) *mysqlDAL {
+func NewMysqlDAL(conn *sql.DB, caches ...*appcache.Coordinator) *mysqlDAL {
+	var cache *appcache.Coordinator
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
 	return &mysqlDAL{
-		db: conn,
+		db:    conn,
+		cache: cache,
 	}
 }
 
@@ -48,6 +55,8 @@ func OpenDB(l *logrus.Entry, conf *config.Config) *sql.DB {
 }
 
 type MysqlSession struct {
+	cache       *appcache.Coordinator
+	changes     []appcache.Dependency
 	context     context.Context
 	transaction *sql.Tx
 }
@@ -62,11 +71,12 @@ func (d *mysqlDAL) NewSession(ctx context.Context) (DBSession, error) {
 	return &MysqlSession{
 		context:     ctx,
 		transaction: tx,
+		cache:       d.cache,
 	}, nil
 }
 
 func (dbs *MysqlSession) Commit() error {
-	return dbs.transaction.Commit()
+	return dbs.cache.Commit(dbs.changes, func() error { return dbs.transaction.Commit() })
 }
 
 func (dbs *MysqlSession) Rollback() error {
@@ -90,6 +100,7 @@ func (dbs *MysqlSession) Ctx() context.Context {
 
 // StoreSession store session into the DAL with set expiration date
 func (d *mysqlDAL) StoreSession(dbs DBSession, key string, uid int64, durationSeconds int64, scope string, client string, ipAddr string) error {
+	changed(dbs, appcache.Secret(key))
 	expiration := time.Now().UTC().Add(time.Second * time.Duration(durationSeconds))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO session (secret, uid, expires_at, scope, client, ip_addr) VALUES (?, ?, ?, ?, ?, ?)`, key, uid, expiration, scope, client, ipAddr)
 	return err
@@ -97,6 +108,7 @@ func (d *mysqlDAL) StoreSession(dbs DBSession, key string, uid int64, durationSe
 
 // DeleteSession deletes specific session
 func (d *mysqlDAL) DeleteSession(dbs DBSession, secret string) error {
+	changed(dbs, appcache.Secret(secret))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `DELETE FROM session WHERE secret=?`, secret)
 	return err
 }
@@ -141,12 +153,14 @@ func (d *mysqlDAL) GetSessionAuthInfo(dbs DBSession, secret string) (*types.Sess
 }
 
 func (d *mysqlDAL) RevokeSession(dbs DBSession, uid int64, sessionID int64) error {
+	changed(dbs, appcache.Key("session-id", sessionID))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `DELETE FROM session WHERE uid=? AND id=?`, uid, sessionID)
 	return err
 }
 
 // StoreDiscordUser store discord user or replace with new data
 func (d *mysqlDAL) StoreDiscordUser(dbs DBSession, discordUser *types.DiscordUser) error {
+	changed(dbs, appcache.Key("user", discordUser.ID))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(),
 		`INSERT INTO discord_user (id, username, avatar, discriminator, public_flags, flags, locale, mfa_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			   ON DUPLICATE KEY UPDATE username=?, avatar=?, discriminator=?, public_flags=?, flags=?, locale=?, mfa_enabled=?`,
@@ -170,6 +184,7 @@ func (d *mysqlDAL) GetDiscordUser(dbs DBSession, uid int64) (*types.DiscordUser,
 
 // StoreDiscordServerRoles store discord user or replace with new data
 func (d *mysqlDAL) StoreDiscordServerRoles(dbs DBSession, roles []types.DiscordRole) error {
+	changed(dbs, "roles")
 	if len(roles) == 0 {
 		return nil
 	}
@@ -187,6 +202,7 @@ func (d *mysqlDAL) StoreDiscordServerRoles(dbs DBSession, roles []types.DiscordR
 
 // StoreDiscordUserRoles store discord user roles
 func (d *mysqlDAL) StoreDiscordUserRoles(dbs DBSession, uid int64, roles []int64) error {
+	changed(dbs, appcache.Key("roles", uid))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `DELETE FROM discord_user_role WHERE fk_uid = ?`, uid)
 	if err != nil {
 		return err
@@ -247,6 +263,7 @@ func (d *mysqlDAL) GetClientSecret(dbs DBSession, clientID string) (string, erro
 
 // StoreSubmission stores plain submission
 func (d *mysqlDAL) StoreSubmission(dbs DBSession, submissionLevel string) (int64, error) {
+	changed(dbs, "navigation")
 	res, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO submission (fk_submission_level_id) 
 				VALUES ((SELECT id FROM submission_level WHERE name = ?))`,
 		submissionLevel)
@@ -266,11 +283,13 @@ func (d *mysqlDAL) StoreSubmission(dbs DBSession, submissionLevel string) (int64
 		return 0, err
 	}
 
+	changed(dbs, appcache.Key("submission", sid))
 	return sid, nil
 }
 
 // StoreSubmissionFile stores submission file
 func (d *mysqlDAL) StoreSubmissionFile(dbs DBSession, s *types.SubmissionFile) (int64, error) {
+	changed(dbs, appcache.Key("submission", s.SubmissionID))
 	res, err := dbs.Tx().ExecContext(dbs.Ctx(), `INSERT INTO submission_file (fk_user_id, fk_submission_id, original_filename, current_filename, size, created_at, md5sum, sha256sum) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.SubmitterID, s.SubmissionID, s.OriginalFilename, s.CurrentFilename, s.Size, s.UploadedAt, s.MD5Sum, s.SHA256Sum)
@@ -357,6 +376,9 @@ func (d *mysqlDAL) GetExtendedSubmissionFilesBySubmissionID(dbs DBSession, sid i
 
 // StoreCurationMeta stores curation meta
 func (d *mysqlDAL) StoreCurationMeta(dbs DBSession, cm *types.CurationMeta) error {
+	if err := changedFile(dbs, cm.SubmissionFileID); err != nil {
+		return err
+	}
 	if cm.RuffleSupport == nil {
 		empty := ""
 		cm.RuffleSupport = &empty
@@ -414,6 +436,7 @@ func (d *mysqlDAL) GetCurationMetaBySubmissionFileID(dbs DBSession, sfid int64) 
 
 // StoreComment stores curation meta
 func (d *mysqlDAL) StoreComment(dbs DBSession, c *types.Comment) (int64, error) {
+	changed(dbs, appcache.Key("submission", c.SubmissionID))
 	var msg *string
 	if c.Message != nil {
 		s := strings.TrimSpace(*c.Message)
@@ -498,6 +521,9 @@ func (d *mysqlDAL) GetCommentByID(dbs DBSession, cid int64) (*types.Comment, err
 
 // SoftDeleteSubmissionFile marks submission file as deleted
 func (d *mysqlDAL) SoftDeleteSubmissionFile(dbs DBSession, sfid int64, deleteReason string) error {
+	if err := changedFile(dbs, sfid); err != nil {
+		return err
+	}
 	row := dbs.Tx().QueryRowContext(dbs.Ctx(), `
 		SELECT COUNT(*), fk_submission_id FROM submission_file
 		WHERE fk_submission_id = (SELECT fk_submission_id FROM submission_file WHERE id = ?)
@@ -532,6 +558,7 @@ func (d *mysqlDAL) SoftDeleteSubmissionFile(dbs DBSession, sfid int64, deleteRea
 
 // SoftDeleteSubmission marks submission and its files as deleted
 func (d *mysqlDAL) SoftDeleteSubmission(dbs DBSession, sid int64, deleteReason string) error {
+	changed(dbs, appcache.Key("submission", sid), "navigation")
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		UPDATE submission_file SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE fk_submission_id = ?`,
@@ -566,6 +593,9 @@ func (d *mysqlDAL) SoftDeleteSubmission(dbs DBSession, sid int64, deleteReason s
 
 // SoftDeleteComment marks comment as deleted
 func (d *mysqlDAL) SoftDeleteComment(dbs DBSession, cid int64, deleteReason string) error {
+	if err := changedComment(dbs, cid); err != nil {
+		return err
+	}
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		UPDATE comment SET deleted_at = NOW(6), deleted_reason = ?
 		WHERE id = ?`,
@@ -644,6 +674,7 @@ func (d *mysqlDAL) GetNotificationSettingsByUserID(dbs DBSession, uid int64) ([]
 
 // SubscribeUserToSubmission stores subscription to a submission
 func (d *mysqlDAL) SubscribeUserToSubmission(dbs DBSession, uid, sid int64) error {
+	changed(dbs, appcache.Key("subscription", fmt.Sprintf("%d:%d", uid, sid)))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		INSERT INTO submission_notification_subscription (fk_user_id, fk_submission_id, created_at)
 		VALUES (?, ?, NOW(6))`,
@@ -653,6 +684,7 @@ func (d *mysqlDAL) SubscribeUserToSubmission(dbs DBSession, uid, sid int64) erro
 
 // UnsubscribeUserFromSubmission deletes subscription to a submission
 func (d *mysqlDAL) UnsubscribeUserFromSubmission(dbs DBSession, uid, sid int64) error {
+	changed(dbs, appcache.Key("subscription", fmt.Sprintf("%d:%d", uid, sid)))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		DELETE FROM submission_notification_subscription
 		WHERE fk_user_id = ? AND fk_submission_id = ?`,
@@ -775,6 +807,9 @@ func (d *mysqlDAL) MarkNotificationAsSent(dbs DBSession, nid int64) error {
 
 // StoreCurationImage stores curation image
 func (d *mysqlDAL) StoreCurationImage(dbs DBSession, c *types.CurationImage) (int64, error) {
+	if err := changedFile(dbs, c.SubmissionFileID); err != nil {
+		return 0, err
+	}
 	res, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		INSERT INTO curation_image (fk_submission_file_id, fk_curation_image_type_id, filename) 
 		VALUES (?, (SELECT id FROM curation_image_type WHERE name = ?), ?)`,
@@ -927,6 +962,7 @@ func (d *mysqlDAL) GetAllSimilarityAttributes(dbs DBSession) ([]*types.Similarit
 
 // DeleteUserSessions deletes all sessions of a given user, including inactive sessions
 func (d *mysqlDAL) DeleteUserSessions(dbs DBSession, uid int64) (int64, error) {
+	changed(dbs, appcache.Key("sessions-user", uid))
 	r, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		DELETE FROM session WHERE uid=?`,
 		uid)
@@ -1038,6 +1074,7 @@ func (d *mysqlDAL) GetCommentsByUserIDAndAction(dbs DBSession, uid int64, action
 
 // FreezeSubmission marks submission as frozen
 func (d *mysqlDAL) FreezeSubmission(dbs DBSession, sid int64) error {
+	changed(dbs, appcache.Key("submission", sid))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		UPDATE submission SET frozen_at = NOW(6)
 		WHERE id = ?`,
@@ -1051,6 +1088,7 @@ func (d *mysqlDAL) FreezeSubmission(dbs DBSession, sid int64) error {
 
 // UnfreezeSubmission removes freeze from a submission
 func (d *mysqlDAL) UnfreezeSubmission(dbs DBSession, sid int64) error {
+	changed(dbs, appcache.Key("submission", sid))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		UPDATE submission SET frozen_at = NULL
 		WHERE id = ?`,
@@ -1064,12 +1102,14 @@ func (d *mysqlDAL) UnfreezeSubmission(dbs DBSession, sid int64) error {
 
 // NukeSessionTable empties the session table
 func (d *mysqlDAL) NukeSessionTable(dbs DBSession) error {
+	changed(dbs, "sessions")
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `DELETE from session`)
 	return err
 }
 
 // UpdateSubmissionAutofreeze sets autofreeze to a given value
 func (d *mysqlDAL) UpdateSubmissionAutofreeze(dbs DBSession, sid int64, shouldAutofreeze bool) error {
+	changed(dbs, appcache.Key("submission", sid))
 	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `
 		UPDATE submission SET should_autofreeze = ?
 		WHERE id = ?`,

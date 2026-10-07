@@ -17,13 +17,28 @@ var userStatisticsSQL string
 // pages or comment messages. Last activity includes every non-deleted action,
 // including comments on a subsequently deleted submission.
 func (d *mysqlDAL) GetAllUserStatistics(dbs DBSession) ([]*types.UserStatistics, error) {
+	return d.getUserStatistics(dbs, nil)
+}
+func (d *mysqlDAL) GetUserStatisticsAggregate(dbs DBSession, uid int64) ([]*types.UserStatistics, error) {
+	return d.getUserStatistics(dbs, &uid)
+}
+func (d *mysqlDAL) getUserStatistics(dbs DBSession, uid *int64) ([]*types.UserStatistics, error) {
 	roles := constants.StaffRoles()
 	query := strings.Replace(userStatisticsSQL, "/*STAFF_ROLES*/", "?"+strings.Repeat(",?", len(roles)-1), 1)
 	args := make([]interface{}, 0, len(roles)+1)
+	if uid != nil {
+		args = append(args, *uid, *uid)
+	}
 	for _, role := range roles {
 		args = append(args, role)
 	}
 	args = append(args, constants.RoleTrialCurator)
+	replacements := []string{"/*SUBMITTED_USER*/", "", "/*ACTION_USER*/", "", "/*ROLE_USER*/", "", "/*USER*/", ""}
+	if uid != nil {
+		replacements = []string{"/*SUBMITTED_USER*/", "AND f.fk_user_id=?", "/*ACTION_USER*/", "AND c.fk_user_id=?", "/*ROLE_USER*/", "WHERE ur.fk_uid=?", "/*USER*/", "WHERE u.id=?"}
+		args = append(args, *uid, *uid)
+	}
+	query = strings.NewReplacer(replacements...).Replace(query)
 	rows, err := dbs.Tx().QueryContext(dbs.Ctx(), query, args...)
 	if err != nil {
 		return nil, err

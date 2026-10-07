@@ -9,17 +9,21 @@ function initResumableUploader(target, maxFiles, allowedExtensions, pollStatus) 
         target: target,
         chunkSize: 16 * 1024 * 1024,
         simultaneousUploads: 2,
-        query: {},
-        generateUniqueIdentifier: function (file, event) {
-            let relativePath = getFilename(file)
-            let size = file.size
-            let utf8 = unescape(encodeURIComponent(relativePath));
-            let encoded = ""
-            for (let i = 0; i < utf8.length; i++) {
-                encoded += utf8.charCodeAt(i).toString()
+        query: function (file) {
+            return file.retryProcessing ? {resumableRetry: file.retryProcessing} : {}
+        },
+        generateUniqueIdentifier: function (file) {
+            // Resume the same attempt after a reload; a confirmed success releases
+            // the identifier so selecting the same file later starts a new upload.
+            const key = "fpfss-upload:" + JSON.stringify([target, getFilename(file), file.size, file.lastModified])
+            file.uploadAttemptKey = key
+            let identifier
+            try { identifier = sessionStorage.getItem(key) } catch (_) {}
+            if (!identifier) {
+                identifier = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("")
+                try { sessionStorage.setItem(key, identifier) } catch (_) {}
             }
-
-            return  size + "-" + encoded
+            return identifier
         },
         maxFiles: maxFiles,
         testChunks: true,
@@ -184,11 +188,26 @@ function pollUploadStatus(file, tempName) {
                 file.progressText.innerHTML += `<br>Message: ${status["message"]}`
             }
             if (status["submission_id"] !== null) {
+                try { sessionStorage.removeItem(file.file.uploadAttemptKey); sessionStorage.removeItem(file.file.uploadAttemptKey + ":retry") } catch (_) {}
                 file.progressText.innerHTML += `<br><a href="/web/submission/${status["submission_id"]}">View</a>`
                 clearInterval(file.intervalID)
             }
             if (status["status"] == "failed") {
                 clearInterval(file.intervalID)
+                const retry = document.createElement("button")
+                retry.type = "button"
+                retry.textContent = "Retry upload"
+                retry.addEventListener("click", function () {
+                    retry.disabled = true
+                    let previous = file.retryProcessing || 0
+                    try { previous = Number(sessionStorage.getItem(file.file.uploadAttemptKey + ":retry")) || previous } catch (_) {}
+                    file.retryProcessing = previous + 1
+                    try { sessionStorage.setItem(file.file.uploadAttemptKey + ":retry", file.retryProcessing) } catch (_) {}
+                    file.uploadStartTime = null
+                    file.retry()
+                })
+                file.progressText.appendChild(document.createElement("br"))
+                file.progressText.appendChild(retry)
             } else {
                 file.progressText.innerHTML += "<br><img src=/static/fpfss-spinner.gif>"
             }
