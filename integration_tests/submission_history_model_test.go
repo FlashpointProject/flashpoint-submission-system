@@ -102,6 +102,8 @@ func (m *historyModel) reduce(sid int64) historyState {
 			sets[2][c.User] = true
 			delete(sets[3], c.User)
 			delete(sets[4], c.User)
+		case "upload-file":
+			delete(sets[2], c.User)
 		case "approve":
 			delete(sets[2], c.User)
 			if out.Last.ID != 0 && c.Micros > out.Last.Micros {
@@ -173,4 +175,27 @@ func TestSubmissionHistoryModel(t *testing.T) {
 	require.Empty(t, m.reduce(1).Users[3])
 	require.Empty(t, m.reduce(1).Users[4])
 	require.Equal(t, []int64{12}, m.reduce(1).Users[0])
+}
+
+func TestSubmissionHistoryModelUploadWithdrawal(t *testing.T) {
+	m := newHistoryModel()
+	add := func(id, user, at int64, action string) {
+		m.apply(historyOp{Kind: "comment", ID: id, Submission: 1, User: user, Micros: at, Action: action})
+	}
+	add(1, 12, 1, "request-changes")
+	add(2, 112, 1, "request-changes")
+	add(3, 12, 2, "edit-meta")
+	require.Equal(t, []int64{12, 112}, m.reduce(1).Users[2])
+	add(4, 12, 3, "upload-file")
+	require.Equal(t, []int64{112}, m.reduce(1).Users[2])
+	require.Empty(t, m.reduce(1).Users[3])
+	require.Empty(t, m.reduce(1).Users[4])
+	add(5, 120, 4, "upload-file")
+	require.Equal(t, []int64{112}, m.reduce(1).Users[2])
+	add(6, 12, 4, "request-changes")
+	require.Equal(t, []int64{12, 112}, m.reduce(1).Users[2])
+	add(7, 12, 4, "upload-file") // Later ID wins a timestamp tie.
+	require.Equal(t, []int64{112}, m.reduce(1).Users[2])
+	m.apply(historyOp{Kind: "delete-comment", ID: 7})
+	require.Equal(t, []int64{12, 112}, m.reduce(1).Users[2])
 }

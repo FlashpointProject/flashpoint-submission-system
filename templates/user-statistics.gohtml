@@ -2,9 +2,11 @@
     <div class="content">
         <h1>User statistics</h1>
 
-        The statistical queries are fairly heavy, so the table loads row by row.<br>
         The table can be sorted by clicking on the header cells.<br><br>
 
+        <p id="user-statistics-status" role="status">Loading user statistics…</p>
+        <button id="user-statistics-retry" type="button" class="pure-button" hidden
+                onclick="populateUserStatisticsTable()">Try again</button>
         <div id="table-wrapper">
             <i>tip: use shift+mousewheel to scroll horizontally</i>
             <div id="table-scroll">
@@ -31,10 +33,7 @@
                         <th class="bgr-reject" title="Rejected">Subs w/ REJ</th>
                     </tr>
                     </thead>
-                    <tbody id="users-table">
-                    <tr>
-                    </tr>
-                    </tbody>
+                    <tbody id="users-table" aria-busy="true"></tbody>
                 </table>
             </div>
         </div>

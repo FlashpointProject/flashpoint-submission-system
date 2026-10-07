@@ -35,7 +35,10 @@ func (d *mysqlDAL) UpdateSubmissionCacheTable(dbs DBSession, sid int64) error {
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	requestedChangesIDseq, err := getUserCountWithEnabledAction(dbs, `= "request-changes"`, `IN("approve", "verify")`, sid, false)
+	// A committed upload withdraws its author's earlier requests without granting
+	// approval. Replay upload comments across all versions so another user's later
+	// upload cannot revive those requests. Metadata edits are not withdrawals.
+	requestedChangesIDseq, err := getUserCountWithEnabledAction(dbs, `= "request-changes"`, `IN("approve", "verify", "upload-file")`, sid, false)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}

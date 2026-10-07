@@ -832,7 +832,13 @@ func (a *App) setupRoutes(router *mux.Router) {
 			muxAny(isStaff)), false))).
 		Methods("GET")
 
-	// user statistics
+	// User statistics: register the bulk route before /{userID}.
+	router.Handle(
+		"/api/user-statistics/all",
+		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
+			a.RequestScope(a.HandleGetAllUserStatistics, types.AuthScopeUsersRead),
+			muxAny(isStaff, isTrialCurator, isInAudit)), false))).
+		Methods("GET")
 
 	router.Handle(
 		"/api/users",

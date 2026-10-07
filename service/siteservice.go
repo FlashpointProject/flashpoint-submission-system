@@ -143,6 +143,7 @@ type SiteService struct {
 	submissionReceiverMutex   sync.Mutex
 	discordRoleCache          *memoize.Memoizer
 	metadataStatsCache        *memoize.Memoizer
+	userStatisticsCache       userStatisticsCache
 	resumableUploadService    *resumableuploadservice.ResumableUploadService
 	archiveIndexerServerURL   string
 	SSK                       SubmissionStatusKeeper

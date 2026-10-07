@@ -92,6 +92,27 @@ To verify your local changes in the [launcher](https://github.com/FlashpointProj
 
 Mirroring Flashpoint's game data in your FPFSS requires to export a JSON from the launcher's "Export Database" option in the Developer tab, then importing it in the site's "Dev Tools" section. Memory size errors when exporting the db may require to use a dev version of the launcher.
 
+## Request changes and fix uploads
+
+A successful archive upload withdraws that uploader's earlier requests for changes
+on the same submission. The request comments remain in history, other reviewers'
+requests remain active, and the new version still needs independent approval and
+verification. Later uploads by other users do not revive withdrawn requests;
+a new request posted after the upload is active normally.
+
+Withdrawal follows the committed `upload-file` history event. Failed uploads and
+metadata-only `edit-meta` events do not withdraw requests. Deleting the archive
+does not undo its historical withdrawal; deleting the upload comment does, just
+as deleting an approval comment can restore an earlier request.
+
+When deploying this rule to an existing database, rebuild submission caches once
+using the authenticated, God-role-only
+`POST /api/internal/recompute-submission-cache-all` endpoint. This recalculates
+existing stuck requests from their original history without deleting comments.
+The HTTP response only acknowledges startup; wait for the
+`submission cache rebuild completed` log, or inspect `submission cache rebuild failed`
+and its progress fields before retrying. Rebuilding is repeatable.
+
 # TODO
 
 - Add tests, this needs some priority!

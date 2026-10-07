@@ -114,6 +114,10 @@ textarea {
     border-radius: 4px;
 }
 
+#user-statistics-retry[hidden] {
+    display: none;
+}
+
 .bgr-edit-meta,
 .bgr-restore,
 .bgr-create,

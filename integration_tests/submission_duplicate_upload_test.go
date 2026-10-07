@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/stretchr/testify/require"
 )
@@ -29,17 +30,25 @@ func TestSubmissionDuplicateUploadRollback(t *testing.T) {
 			require.Equal(t, "success", first.Status, first.Message)
 			require.NotNil(t, first.SubmissionID)
 			f := &sqlFixture{DB: db, Maria: raw, Ctx: ctx}
+			requester := createExtendedTestUser(t, ctx, l, app, db, pgdb, 98010, []int64{roleIDCurator, roleIDTester}, "requester")
+			if existing {
+				rr := addComment(t, l, app, requester.Cookie, *first.SubmissionID, constants.ActionRequestChanges, "needs a fix")
+				require.Equal(t, 200, rr.Code, rr.Body.String())
+			}
 			before := transactionSnapshot(t, f, pg, "curation_meta", "curation_image")
 			var sid *int64
 			if existing {
 				sid = first.SubmissionID
 			}
-			duplicate := quotaWait(t, app, quotaAccepted(t, uploadSubmissionContent(t, l, app, user.Cookie, sid, content)))
+			duplicate := quotaWait(t, app, quotaAccepted(t, uploadSubmissionContent(t, l, app, requester.Cookie, sid, content)))
 			require.Equal(t, "failed", duplicate.Status)
 			require.NotNil(t, duplicate.Message)
 			require.Contains(t, *duplicate.Message, "already present in the DB")
 			require.Contains(t, *duplicate.Message, "checksums md5:")
 			require.Equal(t, before, transactionSnapshot(t, f, pg, "curation_meta", "curation_image"), "duplicate failure must preserve every persisted value")
+			if existing {
+				require.Equal(t, []int64{requester.ID}, searchSubmissionByID(t, ctx, app, *sid).RequestedChangesUserIDs, "failed upload must not withdraw the request")
+			}
 			require.Eventually(t, func() bool {
 				entries, err := os.ReadDir(app.Conf.SubmissionsDirFullPath)
 				return err == nil && len(entries) == 1

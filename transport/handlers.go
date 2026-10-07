@@ -1947,6 +1947,17 @@ func (a *App) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	writeResponse(ctx, w, data, http.StatusOK)
 }
 
+// HandleGetAllUserStatistics returns the complete table in one response.
+func (a *App) HandleGetAllUserStatistics(w http.ResponseWriter, r *http.Request) {
+	data, err := a.Service.GetAllUserStatistics(r.Context())
+	if err != nil {
+		writeError(r.Context(), w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeResponse(r.Context(), w, data, http.StatusOK)
+}
+
 func (a *App) HandleGetUserStatistics(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
