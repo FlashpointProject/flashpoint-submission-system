@@ -32,6 +32,7 @@ import (
 
 // App is App
 type App struct {
+	previewSource     previewSource
 	templateMu        sync.Mutex
 	templates         map[string]*template.Template
 	Conf              *config.Config
