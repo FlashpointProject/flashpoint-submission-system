@@ -55,15 +55,6 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			masterData = append(masterData, utils.FormatLike(*filter.TitlePartial), utils.FormatLike(*filter.TitlePartial))
 		}
 		if filter.CommentPartial != nil {
-			// Search each visible message independently, across all action types and
-			// upload versions. LOCATE treats punctuation literally; lowercasing then
-			// using a binary collation ignores case without also ignoring accents.
-			// EXISTS keeps multiple matching comments from multiplying rows/counts.
-			filters = append(filters, `EXISTS (SELECT 1 FROM comment search_comment
-				WHERE search_comment.fk_submission_id = submission.id
-				AND search_comment.deleted_at IS NULL
-				AND LOCATE(LOWER(?), LOWER(search_comment.message) COLLATE utf8mb4_bin) > 0)`)
-			data = append(data, *filter.CommentPartial)
 			masterFilters = append(masterFilters, "(1 = 0)") // legacy entries have no comments
 		}
 		if filter.SubmitterUsernamePartial != nil {
@@ -414,125 +405,20 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 		masterAnd = " AND "
 	}
 
-	// A count only needs joins referenced by predicates. The page still needs
-	// every display join. LEFT joins cannot remove a submission; DISTINCT
-	// below preserves one row per parent even when a joined key is duplicated.
 	predicates := strings.Join(filters, " AND ")
-	needMeta := strings.Contains(predicates, "meta.")
-	needUploader := strings.Contains(predicates, "uploader.")
-	needUpdater := strings.Contains(predicates, "updater.")
-	needNewestFile := needMeta || strings.Contains(predicates, "newest_file.")
-	needOldestFile := needUploader || strings.Contains(predicates, "oldest_file.")
-	needComment := needUpdater || strings.Contains(predicates, "newest_comment.")
-	needCache := needNewestFile || needOldestFile || needComment || strings.Contains(predicates, "submission_cache.")
-	submissionFrom, countFrom := " FROM submission", " FROM submission"
-	for _, join := range []struct {
-		sql   string
-		count bool
-	}{
-		{` LEFT JOIN submission_cache ON submission_cache.fk_submission_id = submission.id`, needCache},
-		{` LEFT JOIN submission_file AS oldest_file ON oldest_file.id = submission_cache.fk_oldest_file_id`, needOldestFile},
-		{` LEFT JOIN submission_file AS newest_file ON newest_file.id = submission_cache.fk_newest_file_id`, needNewestFile},
-		{` LEFT JOIN comment AS newest_comment ON newest_comment.id = submission_cache.fk_newest_comment_id`, needComment},
-		{` LEFT JOIN discord_user uploader ON oldest_file.fk_user_id = uploader.id`, needUploader},
-		{` LEFT JOIN discord_user updater ON newest_comment.fk_user_id = updater.id`, needUpdater},
-		{` LEFT JOIN curation_meta meta ON meta.fk_submission_file_id = newest_file.id`, needMeta},
-	} {
-		submissionFrom += join.sql
-		if join.count {
-			countFrom += join.sql
-		}
-	}
-	submissionWhere := ` WHERE submission.deleted_at IS NULL` + and + strings.Join(filters, " AND ")
+	submissionWhere := ` WHERE submission.deleted_at IS NULL` + and + predicates
 	legacyWhere := ` WHERE 1` + masterAnd + strings.Join(masterFilters, " AND ")
-
-	finalQuery := `
-			SELECT submission.id AS submission_id,
-		(
-			SELECT name
-			FROM submission_level
-			WHERE id = submission.fk_submission_level_id
-		) AS submission_level,
-		uploader.id AS uploader_id,
-		uploader.username AS uploader_username,
-		uploader.avatar AS uploader_avatar,
-		updater.id AS updater_id,
-		updater.username AS updater_username,
-		updater.avatar AS updater_avatar,
-		newest_file.id AS newest_file_id,
-		newest_file.original_filename AS newest_file_original_filename,
-		newest_file.current_filename AS newest_file_current_filename,
-		newest_file.size AS newest_file_size,
-		oldest_file.created_at AS created_at,
-		newest_comment.created_at AS updated_at,
-		newest_file.fk_user_id AS newest_file_user_id,
-		meta.title AS meta_title,
-		meta.alternate_titles AS meta_alternate_titles,
-		meta.platform AS meta_platform,
-		meta.launch_command AS meta_launch_command,
-		meta.library AS meta_library,
-		meta.extreme AS meta_extreme,
-		submission_cache.bot_action AS bot_action,
-		submission_file_count.count AS file_count,
-		submission_cache.active_assigned_testing_ids AS active_assigned_testing_ids,
-		submission_cache.active_assigned_verification_ids AS active_assigned_verification_ids,
-		submission_cache.active_requested_changes_ids AS active_requested_changes_ids,
-		submission_cache.active_approved_ids AS active_approved_ids,
-		submission_cache.active_verified_ids AS active_verified_ids,
-		submission_cache.distinct_actions AS distinct_actions,
-		meta.game_exists AS meta_game_exists,
-		submission.frozen_at as frozen_at,
-		submission.should_autofreeze as should_autofreeze,
-        NULL AS game_uuid` + submissionFrom + `
-		LEFT JOIN (
-			SELECT fk_submission_id, COUNT(*) AS count 
-			FROM submission_file 
-			WHERE deleted_at IS NULL 
-			GROUP BY fk_submission_id
-		) AS submission_file_count ON submission_file_count.fk_submission_id = submission.id`
-
-	rest := submissionWhere + `
-		GROUP BY submission.id
-		UNION ALL
-			SELECT -1 AS submission_id,
-			(SELECT "legacy") AS submission_level,
-			(SELECT -1) AS uploader_id,
-			(SELECT "legacy") AS uploader_username,
-			(SELECT "legacy") AS uploader_avatar,
-			(SELECT -1) AS updater_id,
-			(SELECT "legacy") AS updater_username,
-			(SELECT "legacy") AS updater_avatar,
-			(SELECT -1) AS newest_file_id,
-			(SELECT "legacy") AS newest_file_original_filename,
-			(SELECT "legacy") AS newest_file_current_filename,
-			(SELECT 42) AS newest_file_size,
-			date_added AS created_at,
-			date_modified AS updated_at,
-			(SELECT -1) AS newest_file_user_id,
-			title AS meta_title,
-			alternate_titles AS meta_alternate_titles,
-			platform AS meta_platform,
-			launch_command  AS meta_launch_command,
-			library  AS meta_library,
-			extreme AS meta_extreme,
-			(SELECT "legacy") AS bot_action,
-			(SELECT 0) AS file_count,
-			(SELECT "") AS active_assigned_testing_ids,
-			(SELECT "") AS active_assigned_verification_ids,
-			(SELECT "") AS active_requested_changes_ids,
-			(SELECT "") AS active_approved_ids,
-			(SELECT "") AS active_verified_ids,
-			(SELECT "mark-added") AS distinct_actions,
-			(SELECT TRUE) as meta_game_exists,
-			(SELECT NULL) as frozen_at,
-			(SELECT FALSE) as should_autofreeze,
-            uuid AS game_uuid
-			FROM masterdb_game
-			` + legacyWhere + `
-		ORDER BY ` + currentOrderBy + ` ` + currentSortOrder + `, submission_id ASC, game_uuid ASC
-		`
-	unlimitedQuery := finalQuery + rest
-	finalQuery = unlimitedQuery + ` LIMIT ? OFFSET ?`
+	searchComments := filter != nil && filter.CommentPartial != nil
+	if searchComments {
+		// The comment predicate is in FROM, before the ordinary WHERE parameters.
+		data = append([]interface{}{*filter.CommentPartial}, data...)
+	}
+	countFrom := submissionSearchFrom(predicates, searchComments)
+	// Reuse expensive metadata/comment matching for the total on nonempty
+	// pages. Simple counts stay separate because their narrow index scan is
+	// cheaper than adding a window over a broad, unfiltered result set.
+	includeCount := strings.Contains(predicates, "meta.") || searchComments
+	finalQuery := submissionSearchPageQuery(predicates, submissionWhere, legacyWhere, currentOrderBy, currentSortOrder, includeCount, searchComments)
 
 	finalData := make([]interface{}, 0)
 	finalData = append(finalData, data...)
@@ -562,10 +448,14 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 	var verifiedUserIDs *string
 	var distinctActions *string
 	var frozenAt *time.Time
+	var counter int64
+	// Reuse the destination slice, including room for the optional total, when
+	// decoding large pages. Each iteration still owns a new submission value.
+	dest := make([]interface{}, 0, 34)
 
 	for rows.Next() {
 		s := &types.ExtendedSubmission{}
-		if err := rows.Scan(
+		dest = append(dest[:0],
 			&s.SubmissionID,
 			&s.SubmissionLevel,
 			&s.SubmitterID, &s.SubmitterUsername, &submitterAvatar,
@@ -576,7 +466,11 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			&s.BotAction,
 			&s.FileCount,
 			&assignedTestingUserIDs, &assignedVerificationUserIDs, &requestedChangesUserIDs, &approvedUserIDs, &verifiedUserIDs,
-			&distinctActions, &s.GameExists, &frozenAt, &s.ShouldAutofreeze, &s.GameUUID); err != nil {
+			&distinctActions, &s.GameExists, &frozenAt, &s.ShouldAutofreeze, &s.GameUUID)
+		if includeCount {
+			dest = append(dest, &counter)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, 0, err
 		}
 		s.SubmitterAvatarURL = utils.FormatAvatarURL(s.SubmitterID, submitterAvatar)
@@ -659,7 +553,15 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 	if err := rows.Close(); err != nil {
 		return nil, 0, err
 	}
-	var counter int64
+	// With no offset, an empty page proves there are no matches. Past the end
+	// of a later page, however, zero rows does not imply a zero total.
+	if len(result) == 0 && currentOffset == 0 {
+		return result, 0, nil
+	}
+	// A later empty page carries no window value: count on the same transaction.
+	if includeCount && len(result) > 0 {
+		return result, counter, nil
+	}
 	if err := dbs.Tx().QueryRowContext(dbs.Ctx(), countingQuery, unlimitedData...).Scan(&counter); err != nil {
 		return nil, 0, err
 	}

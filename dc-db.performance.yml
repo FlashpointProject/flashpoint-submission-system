@@ -1,0 +1,8 @@
+# Optional override: docker compose -f dc-db.yml -f dc-db.performance.yml up -d database
+# Recreating the database container is an operator action, not part of profiling.
+services:
+  database:
+    cpus: 4
+    mem_limit: 8g
+    volumes:
+      - ./config/mariadb-performance.cnf:/etc/mysql/conf.d/fpfss-performance.cnf:ro

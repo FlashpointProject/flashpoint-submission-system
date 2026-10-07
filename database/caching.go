@@ -212,29 +212,17 @@ func getUserCountWithEnabledAction(dbs DBSession, enablerChunk, disablerChunk st
 }
 
 func getFileDataSequences(dbs DBSession, sid int64) (ofs, cfs, md5s, sha256s *string, err error) {
+	// Aggregate this submission's active files directly. Grouping every file
+	// before applying sid outside a windowed CTE forces a database-wide rebuild
+	// for each comment/action. One group already gives one row; no rank is needed.
 	row := dbs.Tx().QueryRowContext(dbs.Ctx(), `
-		WITH ranked_file AS (
-			SELECT s.*,
-				ROW_NUMBER() OVER (
-					PARTITION BY fk_submission_id
-					ORDER BY created_at
-				) AS rn,
-				GROUP_CONCAT(original_filename) AS original_filename_sequence,
-				GROUP_CONCAT(current_filename) AS current_filename_sequence,
-				GROUP_CONCAT(md5sum) AS md5sum_sequence,
-				GROUP_CONCAT(sha256sum) AS sha256sum_sequence
-			FROM submission_file AS s
-			WHERE s.deleted_at IS NULL
-			GROUP BY s.fk_submission_id
-		)
-		SELECT original_filename_sequence,
-			current_filename_sequence,
-			md5sum_sequence,
-			sha256sum_sequence
-		FROM ranked_file
-		WHERE rn = 1
-		AND fk_submission_id = ?`,
-		sid)
+		SELECT GROUP_CONCAT(original_filename),
+			GROUP_CONCAT(current_filename),
+			GROUP_CONCAT(md5sum),
+			GROUP_CONCAT(sha256sum)
+		FROM submission_file
+		WHERE fk_submission_id = ? AND deleted_at IS NULL
+		GROUP BY fk_submission_id`, sid)
 
 	err = row.Scan(&ofs, &cfs, &md5s, &sha256s)
 	return

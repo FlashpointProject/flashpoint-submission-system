@@ -296,13 +296,17 @@ func TestSubmissionQuickFiltersAssignedFixUploader(t *testing.T) {
 			check(assignedQuery, 1)
 			check(changesQuery, 1)
 			uploadFixedVersion(t, l, app, fixer, sid)
-			// Upload does not clear assignment or RC, but the uploader can no longer
-			// review the version. Manual state searches still expose that history.
+			// A fix upload retains assignment but withdraws the uploader's request
+			// for changes. The uploader also cannot review their own version.
 			for _, query := range []string{assignedQuery, changesQuery} {
 				manual, err := url.ParseQuery(query)
 				require.NoError(t, err)
 				manual.Del("last-uploader-not-me")
-				check(manual.Encode(), 1)
+				count := 1
+				if query == changesQuery {
+					count = 0
+				}
+				check(manual.Encode(), count)
 				check(query, 0)
 			}
 			for _, action := range []string{constants.ActionApprove, constants.ActionVerify, constants.ActionRequestChanges} {
@@ -312,7 +316,7 @@ func TestSubmissionQuickFiltersAssignedFixUploader(t *testing.T) {
 			}
 			uploadFixedVersion(t, l, app, original, sid)
 			check(assignedQuery, 1)
-			check(changesQuery, 1)
+			check(changesQuery, 0) // Another upload must not revive the withdrawn request.
 		})
 	}
 }
