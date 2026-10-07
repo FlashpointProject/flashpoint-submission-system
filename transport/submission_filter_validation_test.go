@@ -33,6 +33,13 @@ func TestSubmissionFilterHTTPValidation(t *testing.T) {
 		query string
 		valid bool
 	}{
+		{"results-per-page=", true},
+		{"results-per-page=0", true},
+		{"results-per-page=1", true},
+		{"results-per-page=1000", true},
+		{"results-per-page=1001", false},
+		{"results-per-page=100000", false},
+		{"results-per-page=-1", false},
 		{"assigned-status-testing-user=assigned", false},
 		{"assigned-status-verification-user=unassigned", false},
 		{"requested-changes-status-user=none", false},
