@@ -40,3 +40,6 @@ snapshot-results/
 # Local production snapshots
 /fpfss-*-dump-*.sql.zst
 **/__pycache__/
+
+cmd/*
+scripts/*

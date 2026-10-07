@@ -54,6 +54,18 @@ func (d *mysqlDAL) SearchSubmissions(dbs DBSession, filter *types.SubmissionsFil
 			masterFilters = append(masterFilters, "(title LIKE ? OR alternate_titles LIKE ?)")
 			masterData = append(masterData, utils.FormatLike(*filter.TitlePartial), utils.FormatLike(*filter.TitlePartial))
 		}
+		if filter.CommentPartial != nil {
+			// Search each visible message independently, across all action types and
+			// upload versions. LOCATE treats punctuation literally; lowercasing then
+			// using a binary collation ignores case without also ignoring accents.
+			// EXISTS keeps multiple matching comments from multiplying rows/counts.
+			filters = append(filters, `EXISTS (SELECT 1 FROM comment search_comment
+				WHERE search_comment.fk_submission_id = submission.id
+				AND search_comment.deleted_at IS NULL
+				AND LOCATE(LOWER(?), LOWER(search_comment.message) COLLATE utf8mb4_bin) > 0)`)
+			data = append(data, *filter.CommentPartial)
+			masterFilters = append(masterFilters, "(1 = 0)") // legacy entries have no comments
+		}
 		if filter.SubmitterUsernamePartial != nil {
 			tableName := `uploader.username`
 			filters, masterFilters, data, masterData = addMultifilter(
