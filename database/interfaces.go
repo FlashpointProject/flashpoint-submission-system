@@ -144,7 +144,6 @@ type DAL interface {
 	ListSubmissionIDsForCacheRebuild(dbs DBSession, afterID int64, limit int) ([]int64, error)
 	RebuildSubmissionCacheTable(dbs DBSession, sid int64) error
 
-	ClearMasterDBGames(dbs DBSession) error
 	StoreMasterDBGames(dbs DBSession, games []*types.MasterDatabaseGame) error
 
 	GetAllSimilarityAttributes(dbs DBSession) ([]*types.SimilarityAttributes, error)
