@@ -304,6 +304,10 @@ textarea {
     word-break: break-word;
 }
 
+#users-table tr td:nth-of-type(2) {
+    overflow-wrap: anywhere;
+}
+
 #table-wrapper {
     position: relative;
 }
