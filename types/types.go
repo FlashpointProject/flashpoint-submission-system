@@ -260,6 +260,9 @@ func (sf *SubmissionsFilter) Validate() error {
 			return fmt.Errorf("results per page must be >= 1")
 		}
 	}
+	if sf.ResultsPerPage != nil && *sf.ResultsPerPage > 1000 {
+		return fmt.Errorf("results per page must be <= 1000")
+	}
 	if sf.Page != nil && *sf.Page < 1 {
 		if *sf.Page == 0 {
 			sf.Page = nil

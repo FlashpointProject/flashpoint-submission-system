@@ -276,8 +276,8 @@
                         <div class="form-column-text">
                             <fieldset>
                                 <legend>Personal Filters</legend>
-                                <label for="results-per-page">Results Per Page (default 100)</label>
-                                <input type="number" name="results-per-page" min="1"
+                                <label for="results-per-page">Results Per Page (default 100, max 1000)</label>
+                                <input type="number" name="results-per-page" min="1" max="1000"
                                        value="{{default "" .Filter.ResultsPerPage}}">
                                 <label for="page">Page</label>
                                 <input type="number" name="page" min="1" value="{{default "" .Filter.Page}}">
