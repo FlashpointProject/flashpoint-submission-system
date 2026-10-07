@@ -1,6 +1,8 @@
 package resumableuploadservice
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,11 +18,8 @@ type ResumableUploadService struct {
 
 func (rsu *ResumableUploadService) getChunkFilename(uid int64, fileID string, chunkNumber int) string {
 
-	if len(fileID) > 64 {
-		fileID = fileID[:64]
-	}
-
-	return fmt.Sprintf("%s/data-%d-%s-%d", rsu.path, uid, fileID, chunkNumber)
+	// Use the complete identifier: truncation can alias unrelated uploads.
+	return fmt.Sprintf("%s/data-%d-%x-%d", rsu.path, uid, sha256.Sum256([]byte(fileID)), chunkNumber)
 }
 
 func New(path string) (*ResumableUploadService, error) {
@@ -113,17 +112,16 @@ func (rsu *ResumableUploadService) DeleteFile(uid int64, fileID string, chunkCou
 	if uid == 0 || len(fileID) == 0 {
 		panic("invalid arguments provided")
 	}
-
+	var failures []error
 	for i := 1; i <= chunkCount; i++ {
-		chunkFilename := rsu.getChunkFilename(uid, fileID, i)
-
-		err := os.Remove(chunkFilename)
-		if err != nil {
-			return err
+		filename := rsu.getChunkFilename(uid, fileID, i)
+		for _, path := range []string{filename, filename + ".part"} {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				failures = append(failures, err)
+			}
 		}
 	}
-
-	return nil
+	return errors.Join(failures...)
 }
 
 type ReadCloserInformer interface {

@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
 	"io"
 	"io/ioutil"
 	"log"
@@ -26,12 +28,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	cache2 "github.com/patrickmn/go-cache"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/clients"
 	"github.com/FlashpointProject/flashpoint-submission-system/resumableuploadservice"
 	"github.com/kofalt/go-memoize"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/authbot"
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
@@ -127,6 +127,10 @@ func MapAuthToken(token *AuthToken) map[string]string {
 }
 
 type SiteService struct {
+	cacheCoordinator          *appcache.Coordinator
+	cacheOnce                 sync.Once
+	caches                    *applicationCaches
+	uploadJobs                uploadJobRegistry
 	authBot                   authbot.DiscordRoleReader
 	notificationBot           notificationbot.DiscordNotificationSender
 	dal                       database.DAL
@@ -142,12 +146,11 @@ type SiteService struct {
 	isDev                     bool
 	submissionReceiverMutex   sync.Mutex
 	discordRoleCache          *memoize.Memoizer
-	metadataStatsCache        *memoize.Memoizer
-	userStatisticsCache       userStatisticsCache
-	resumableUploadService    *resumableuploadservice.ResumableUploadService
-	archiveIndexerServerURL   string
-	SSK                       SubmissionStatusKeeper
-	DataPacksIndexer          ZipIndexer
+
+	resumableUploadService  *resumableuploadservice.ResumableUploadService
+	archiveIndexerServerURL string
+	SSK                     SubmissionStatusKeeper
+	DataPacksIndexer        ZipIndexer
 }
 
 func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notificationBotSession *discordgo.Session,
@@ -155,11 +158,13 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 	sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
 	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
+	cacheCoordinator := &appcache.Coordinator{}
 	return &SiteService{
+		cacheCoordinator:          cacheCoordinator,
 		authBot:                   authbot.NewBot(authBotSession, flashpointServerID, l.WithField("botName", "authBot"), isDev),
 		notificationBot:           notificationbot.NewBot(notificationBotSession, flashpointServerID, notificationChannelID, curationFeedChannelID, l.WithField("botName", "notificationBot"), isDev),
-		dal:                       database.NewMysqlDAL(db),
-		pgdal:                     database.NewPostgresDAL(pgdb),
+		dal:                       database.NewMysqlDAL(db, cacheCoordinator),
+		pgdal:                     database.NewPostgresDAL(pgdb, cacheCoordinator),
 		validator:                 NewValidator(validatorServerURL),
 		clock:                     &RealClock{},
 		randomStringProvider:      utils.NewRealRandomStringProvider(),
@@ -170,9 +175,9 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 		notificationQueueNotEmpty: make(chan bool, 1),
 		isDev:                     isDev,
 		discordRoleCache:          memoize.NewMemoizer(2*time.Minute, 60*time.Minute),
-		metadataStatsCache:        memoize.NewMemoizer(1*time.Minute, cache2.NoExpiration),
-		resumableUploadService:    rsu,
-		archiveIndexerServerURL:   archiveIndexerServerURL,
+
+		resumableUploadService:  rsu,
+		archiveIndexerServerURL: archiveIndexerServerURL,
 		SSK: SubmissionStatusKeeper{
 			m: make(map[string]*types.SubmissionStatus),
 		},
@@ -184,11 +189,13 @@ func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authb
 	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
 	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
+	cacheCoordinator := &appcache.Coordinator{}
 	return &SiteService{
+		cacheCoordinator:          cacheCoordinator,
 		authBot:                   authBot,
 		notificationBot:           notificationBot,
-		dal:                       database.NewMysqlDAL(db),
-		pgdal:                     database.NewPostgresDAL(pgdb),
+		dal:                       database.NewMysqlDAL(db, cacheCoordinator),
+		pgdal:                     database.NewPostgresDAL(pgdb, cacheCoordinator),
 		validator:                 NewValidator(validatorServerURL),
 		clock:                     &RealClock{},
 		randomStringProvider:      utils.NewRealRandomStringProvider(),
@@ -199,9 +206,9 @@ func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authb
 		notificationQueueNotEmpty: make(chan bool, 1),
 		isDev:                     isDev,
 		discordRoleCache:          memoize.NewMemoizer(2*time.Minute, 60*time.Minute),
-		metadataStatsCache:        memoize.NewMemoizer(1*time.Minute, cache2.NoExpiration),
-		resumableUploadService:    rsu,
-		archiveIndexerServerURL:   archiveIndexerServerURL,
+
+		resumableUploadService:  rsu,
+		archiveIndexerServerURL: archiveIndexerServerURL,
 		SSK: SubmissionStatusKeeper{
 			m: make(map[string]*types.SubmissionStatus),
 		},
@@ -211,11 +218,6 @@ func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authb
 
 // GetBasePageData loads base user data, does not return error if user is not logged in
 func (s *SiteService) GetBasePageData(ctx context.Context) (*types.BasePageData, error) {
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		return nil, dberr(err)
-	}
-	defer dbs.Rollback()
 
 	uid := utils.UserID(ctx)
 	if uid < 100000 {
@@ -223,13 +225,13 @@ func (s *SiteService) GetBasePageData(ctx context.Context) (*types.BasePageData,
 		return &types.BasePageData{}, nil
 	}
 
-	discordUser, err := s.dal.GetDiscordUser(dbs, uid)
+	discordUser, err := s.GetDiscordUser(ctx, uid)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
 	}
 
-	userRoles, err := s.dal.GetDiscordUserRoles(dbs, uid)
+	userRoles, err := s.GetUserRoles(ctx, uid)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
@@ -1030,135 +1032,123 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 }
 
 func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid int64) (*types.ViewSubmissionPageData, error) {
-	// Tags enrich the page, but a stalled validator must not hold database transactions.
-	tagList, err := s.validator.GetTags(ctx)
+	snapshot, err := s.readCaches().submissions.Get(ctx, fmt.Sprint(sid), func(ctx context.Context) (appcache.Snapshot[submissionSnapshot], error) {
+		v, err := s.loadSubmissionSnapshot(ctx, sid)
+		deps := append(userDependencies(v.Submissions, v.Comments), appcache.Key("submission", sid))
+		return appcache.Snapshot[submissionSnapshot]{Value: v, Dependencies: deps}, err
+	})
 	if err != nil {
-		tagList = nil
+		return nil, err
 	}
-
-	dbs, err := s.dal.NewSession(ctx)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-	defer dbs.Rollback()
-
 	bpd, err := s.GetBasePageData(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	filter := &types.SubmissionsFilter{
-		SubmissionIDs: []int64{sid},
-	}
-
-	submissions, _, err := s.dal.SearchSubmissions(dbs, filter)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	if len(submissions) == 0 {
-		return nil, perr("submission not found", http.StatusNotFound)
-	}
-
-	submission := submissions[0]
-
-	meta, err := s.dal.GetCurationMetaBySubmissionFileID(dbs, submission.FileID)
-	if err != nil && err != sql.ErrNoRows {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	comments, err := s.dal.GetExtendedCommentsBySubmissionID(dbs, sid)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	isUserSubscribed, err := s.dal.IsUserSubscribedToSubmission(dbs, uid, sid)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	curationImages, err := s.dal.GetCurationImagesBySubmissionFileID(dbs, submission.FileID)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	ciids := make([]int64, 0, len(curationImages))
-
-	for _, curationImage := range curationImages {
-		ciids = append(ciids, curationImage.ID)
-	}
-
-	var nextSID *int64
-	var prevSID *int64
-
-	nsid, err := s.dal.GetNextSubmission(dbs, sid)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			utils.LogCtx(ctx).Error(err)
-			return nil, dberr(err)
+	subscribed, err := s.readCaches().subscriptions.Get(ctx, subscriptionKey(uid, sid), func(ctx context.Context) (appcache.Snapshot[bool], error) {
+		dbs, err := s.dal.NewSession(ctx)
+		if err != nil {
+			return appcache.Snapshot[bool]{}, err
 		}
-	} else {
-		nextSID = &nsid
-	}
-
-	psid, err := s.dal.GetPreviousSubmission(dbs, sid)
+		defer dbs.Rollback()
+		v, err := s.dal.IsUserSubscribedToSubmission(dbs, uid, sid)
+		return appcache.Snapshot[bool]{Value: v, Dependencies: []appcache.Dependency{appcache.Key("subscription", subscriptionKey(uid, sid)), appcache.Key("submission", sid)}}, err
+	})
 	if err != nil {
-		if err != sql.ErrNoRows {
-			utils.LogCtx(ctx).Error(err)
-			return nil, dberr(err)
-		}
-	} else {
-		prevSID = &psid
+		return nil, err
 	}
-
-	pageData := &types.ViewSubmissionPageData{
-		SubmissionsPageData: types.SubmissionsPageData{
-			BasePageData: *bpd,
-			Submissions:  submissions,
-		},
-		CurationMeta:         meta,
-		Comments:             comments,
-		IsUserSubscribed:     isUserSubscribed,
-		CurationImageIDs:     ciids,
-		NextSubmissionID:     nextSID,
-		PreviousSubmissionID: prevSID,
-		TagList:              tagList,
+	nav, err := s.readCaches().navigation.Get(ctx, fmt.Sprint(sid), func(ctx context.Context) (appcache.Snapshot[submissionNavigation], error) {
+		v, err := s.loadSubmissionNavigation(ctx, sid)
+		return appcache.Snapshot[submissionNavigation]{Value: v, Dependencies: []appcache.Dependency{"navigation"}}, err
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	return pageData, nil
+	// External enrichment is deliberately outside the submission snapshot.
+	tags, _ := s.validator.GetTags(ctx)
+	return &types.ViewSubmissionPageData{
+		SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
+		CurationMeta:        snapshot.Meta, Comments: snapshot.Comments, CurationImageIDs: snapshot.ImageIDs,
+		IsUserSubscribed: subscribed, TagList: tags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
+	}, nil
 }
-
-func (s *SiteService) GetSubmissionsFilesPageData(ctx context.Context, sid int64) (*types.SubmissionsFilesPageData, error) {
+func (s *SiteService) loadSubmissionSnapshot(ctx context.Context, sid int64) (submissionSnapshot, error) {
+	var v submissionSnapshot
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
+		return v, err
 	}
 	defer dbs.Rollback()
-
+	v.Submissions, _, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{SubmissionIDs: []int64{sid}})
+	if err != nil {
+		return v, err
+	}
+	if len(v.Submissions) == 0 {
+		return v, perr("submission not found", http.StatusNotFound)
+	}
+	fid := v.Submissions[0].FileID
+	v.Meta, err = s.dal.GetCurationMetaBySubmissionFileID(dbs, fid)
+	if err != nil && err != sql.ErrNoRows {
+		return v, err
+	}
+	v.Comments, err = s.dal.GetExtendedCommentsBySubmissionID(dbs, sid)
+	if err != nil {
+		return v, err
+	}
+	images, err := s.dal.GetCurationImagesBySubmissionFileID(dbs, fid)
+	if err != nil {
+		return v, err
+	}
+	v.ImageIDs = make([]int64, 0, len(images))
+	for _, image := range images {
+		v.ImageIDs = append(v.ImageIDs, image.ID)
+	}
+	return v, nil
+}
+func (s *SiteService) loadSubmissionNavigation(ctx context.Context, sid int64) (submissionNavigation, error) {
+	var v submissionNavigation
+	dbs, err := s.dal.NewSession(ctx)
+	if err != nil {
+		return v, err
+	}
+	defer dbs.Rollback()
+	next, err := s.dal.GetNextSubmission(dbs, sid)
+	if err != nil && err != sql.ErrNoRows {
+		return v, err
+	}
+	if err == nil {
+		v.Next = &next
+	}
+	previous, err := s.dal.GetPreviousSubmission(dbs, sid)
+	if err != nil && err != sql.ErrNoRows {
+		return v, err
+	}
+	if err == nil {
+		v.Previous = &previous
+	}
+	return v, nil
+}
+func (s *SiteService) GetSubmissionsFilesPageData(ctx context.Context, sid int64) (*types.SubmissionsFilesPageData, error) {
+	files, err := s.readCaches().files.Get(ctx, fmt.Sprint(sid), func(ctx context.Context) (appcache.Snapshot[[]*types.ExtendedSubmissionFile], error) {
+		dbs, err := s.dal.NewSession(ctx)
+		if err != nil {
+			return appcache.Snapshot[[]*types.ExtendedSubmissionFile]{}, err
+		}
+		defer dbs.Rollback()
+		v, err := s.dal.GetExtendedSubmissionFilesBySubmissionID(dbs, sid)
+		deps := []appcache.Dependency{appcache.Key("submission", sid)}
+		for _, f := range v {
+			deps = append(deps, appcache.Key("user", f.SubmitterID))
+		}
+		return appcache.Snapshot[[]*types.ExtendedSubmissionFile]{Value: v, Dependencies: deps}, err
+	})
+	if err != nil {
+		return nil, err
+	}
 	bpd, err := s.GetBasePageData(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	sf, err := s.dal.GetExtendedSubmissionFilesBySubmissionID(dbs, sid)
-	if err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, dberr(err)
-	}
-
-	pageData := &types.SubmissionsFilesPageData{
-		BasePageData:    *bpd,
-		SubmissionFiles: sf,
-	}
-
-	return pageData, nil
+	return &types.SubmissionsFilesPageData{BasePageData: *bpd, SubmissionFiles: files}, nil
 }
 
 func (s *SiteService) GetSessions(ctx context.Context, uid int64) ([]*types.SessionInfo, error) {
@@ -1262,6 +1252,19 @@ func (s *SiteService) SearchSubmissions(ctx context.Context, filter *types.Submi
 }
 
 func (s *SiteService) GetSubmissionFiles(ctx context.Context, sfids []int64) ([]*types.SubmissionFile, error) {
+	if len(sfids) != 1 {
+		return s.loadSubmissionFiles(ctx, sfids)
+	}
+	return s.readCaches().file.Get(ctx, fmt.Sprint(sfids[0]), func(ctx context.Context) (appcache.Snapshot[[]*types.SubmissionFile], error) {
+		v, err := s.loadSubmissionFiles(ctx, sfids)
+		deps := []appcache.Dependency{appcache.Key("file", sfids[0])}
+		for _, f := range v {
+			deps = append(deps, appcache.Key("submission", f.SubmissionID))
+		}
+		return appcache.Snapshot[[]*types.SubmissionFile]{Value: v, Dependencies: deps}, err
+	})
+}
+func (s *SiteService) loadSubmissionFiles(ctx context.Context, sfids []int64) ([]*types.SubmissionFile, error) {
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -1316,6 +1319,28 @@ func (s *SiteService) GetComment(ctx context.Context, cid int64) (*types.Comment
 }
 
 func (s *SiteService) GetSessionAuthInfo(ctx context.Context, key string) (*types.SessionInfo, bool, error) {
+	v, err := s.readCaches().sessions.Get(ctx, sessionKey(key), func(ctx context.Context) (appcache.Snapshot[*types.SessionInfo], error) {
+		v, ok, err := s.loadSessionAuthInfo(ctx, key)
+		if err != nil {
+			return appcache.Snapshot[*types.SessionInfo]{}, err
+		}
+		if !ok {
+			return appcache.Snapshot[*types.SessionInfo]{}, errInactiveSession
+		}
+		return appcache.Snapshot[*types.SessionInfo]{Value: v, Expires: v.ExpiresAt, Dependencies: []appcache.Dependency{"sessions", appcache.Secret(key), appcache.Key("session-id", v.ID), appcache.Key("sessions-user", v.UID)}}, nil
+	})
+	if errors.Is(err, errInactiveSession) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return v, v.ExpiresAt.After(time.Now()), nil
+}
+
+var errInactiveSession = errors.New("inactive session")
+
+func (s *SiteService) loadSessionAuthInfo(ctx context.Context, key string) (*types.SessionInfo, bool, error) {
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -1653,22 +1678,10 @@ func (s *SiteService) SaveUser(ctx context.Context, discordUser *types.DiscordUs
 
 	serverRoles := sr.([]types.DiscordRole)
 
-	getUserRoles := func() (interface{}, error) {
-		return s.authBot.GetFlashpointRoleIDsForUser(discordUser.ID)
-	}
-	getUserRolesKey := fmt.Sprintf("getUserRoles-%d", discordUser.ID)
-
-	// get discord user roles
-	urid, err, cached := s.discordRoleCache.Memoize(getUserRolesKey, getUserRoles)
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("reading user roles from discord")
-
+	userRoleIDs, err := s.authBot.GetFlashpointRoleIDsForUser(discordUser.ID)
 	if err != nil {
-		s.discordRoleCache.Storage.Delete(getUserRolesKey)
-		utils.LogCtx(ctx).Error(err)
 		return nil, err
 	}
-
-	userRoleIDs := urid.([]string)
 
 	// start session
 	dbs, err := s.dal.NewSession(ctx)
@@ -1866,6 +1879,12 @@ func (s *SiteService) GetServerUser(ctx context.Context, uid int64) (*types.Flas
 }
 
 func (s *SiteService) GetUserRoles(ctx context.Context, uid int64) ([]string, error) {
+	return s.readCaches().roles.Get(ctx, fmt.Sprint(uid), func(ctx context.Context) (appcache.Snapshot[[]string], error) {
+		v, err := s.loadUserRoles(ctx, uid)
+		return appcache.Snapshot[[]string]{Value: v, Dependencies: []appcache.Dependency{"roles", appcache.Key("roles", uid)}}, err
+	})
+}
+func (s *SiteService) loadUserRoles(ctx context.Context, uid int64) ([]string, error) {
 	dbs, err := s.dal.NewSession(ctx)
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
@@ -2259,7 +2278,7 @@ func isFlasfhreezeExtensionValid(filename string) (bool, string) {
 	return true, ext
 }
 
-func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, uid int64, sid *int64, resumableParams *types.ResumableParams, tempName string) error {
+func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, uid int64, sid *int64, resumableParams *types.ResumableParams, tempName string, beforeCommit ...func()) error {
 	var destinationFilename *string
 	imageFilePaths := make([]string, 0)
 
@@ -2343,6 +2362,9 @@ func (s *SiteService) processReceivedResumableSubmission(ctx context.Context, ui
 		return fmt.Errorf("PostgreSQL session was not opened while processing submission")
 	}
 
+	for _, notify := range beforeCommit {
+		notify()
+	}
 	if err := pgdbs.Commit(); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		s.SSK.SetFailed(tempName, "internal error")
@@ -2570,126 +2592,27 @@ func (s *SiteService) DeleteUserSessions(ctx context.Context, targetID int64) (i
 }
 
 func (s *SiteService) GetStatisticsPageData(ctx context.Context) (*types.StatisticsPageData, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	bpd, err := s.GetBasePageData(ctx)
 	if err != nil {
-		utils.LogCtx(ctx).Error(err)
 		return nil, err
 	}
-
-	errs, ectx := errgroup.WithContext(ctx)
-
-	var sc int64
-	var scbh int64
-	var scbs int64
-	var sca int64
-	var scv int64
-	var scr int64
-	var scif int64
-	var uc int64
-	var cc int64
-	var tss int64
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
+	v, err := s.readCaches().siteStatistics.Get(ctx, "site", func(ctx context.Context) (appcache.Snapshot[*types.StatisticsPageData], error) {
+		dbs, err := s.dal.NewSession(ctx)
+		if err != nil {
+			return appcache.Snapshot[*types.StatisticsPageData]{}, err
+		}
 		defer dbs.Rollback()
-		var err error
-		_, sc, err = s.dal.SearchSubmissions(dbs, nil)
-		return err
+		totals, err := s.dal.GetSiteStatistics(dbs)
+		return appcache.Snapshot[*types.StatisticsPageData]{Value: totals, Expires: time.Now().Add(statisticsCacheTTL)}, err
 	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		_, scbh, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{BotActions: []string{"approve"}})
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		_, scbs, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{BotActions: []string{"request-changes"}})
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		approved := "approved"
-		_, sca, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{ApprovalsStatus: &approved})
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		verified := "verified"
-		_, scv, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{VerificationStatus: &verified})
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		_, scr, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{DistinctActions: []string{"reject"}})
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		_, scif, err = s.dal.SearchSubmissions(dbs, &types.SubmissionsFilter{DistinctActions: []string{"mark-added"}})
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		uc, err = s.dal.GetTotalUserCount(dbs)
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		cc, err = s.dal.GetTotalCommentsCount(dbs)
-		return err
-	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-		tss, err = s.dal.GetTotalSubmissionFilesize(dbs)
-		return err
-	})
-
-	if err := errs.Wait(); err != nil {
-		utils.LogCtx(ctx).Error(err)
+	if err != nil {
 		return nil, err
 	}
-
-	pageData := &types.StatisticsPageData{
-		BasePageData:                *bpd,
-		SubmissionCount:             sc,
-		SubmissionCountBotHappy:     scbh,
-		SubmissionCountBotSad:       scbs,
-		SubmissionCountApproved:     sca,
-		SubmissionCountVerified:     scv,
-		SubmissionCountRejected:     scr,
-		SubmissionCountInFlashpoint: scif,
-		UserCount:                   uc,
-		CommentCount:                cc,
-		TotalSubmissionSize:         tss,
-	}
-	return pageData, nil
+	// Only aggregate data is cached. Identity and permissions belong to this request.
+	v.BasePageData = *bpd
+	return v, nil
 }
 
 func (s *SiteService) GetUsers(ctx context.Context) ([]*types.User, error) {
@@ -2699,416 +2622,28 @@ func (s *SiteService) GetUsers(ctx context.Context) ([]*types.User, error) {
 }
 
 func (s *SiteService) GetDiscordUser(ctx context.Context, uid int64) (*types.DiscordUser, error) {
-	dbs, _ := s.dal.NewSession(ctx)
-	return s.dal.GetDiscordUser(dbs, uid)
+	return s.readCaches().users.Get(ctx, fmt.Sprint(uid), func(ctx context.Context) (appcache.Snapshot[*types.DiscordUser], error) {
+		dbs, err := s.dal.NewSession(ctx)
+		if err != nil {
+			return appcache.Snapshot[*types.DiscordUser]{}, err
+		}
+		defer dbs.Rollback()
+		v, err := s.dal.GetDiscordUser(dbs, uid)
+		return appcache.Snapshot[*types.DiscordUser]{Value: v, Dependencies: []appcache.Dependency{appcache.Key("user", uid)}}, err
+	})
 }
 
 func (s *SiteService) GetUserStatistics(ctx context.Context, uid int64) (*types.UserStatistics, error) {
-	user, isTrial, isStaff, err := func() (*types.DiscordUser, bool, bool, error) {
-		dbs, _ := s.dal.NewSession(ctx)
-		defer dbs.Rollback()
-		du, err := s.dal.GetDiscordUser(dbs, uid)
-		roles, err := s.GetUserRoles(ctx, uid)
-		return du, constants.IsTrialCurator(roles), constants.IsStaff(roles), err
-	}()
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, perr("user not found", http.StatusNotFound)
-		}
-		utils.LogCtx(ctx).Error(err)
-		return nil, err
-	}
-
-	role := "User"
-	if isTrial {
-		role = constants.RoleTrialCurator
-	}
-	if isStaff {
-		role = "Staff"
-	}
-
-	us := &types.UserStatistics{
-		UserID:   strconv.FormatInt(user.ID, 10),
-		Username: user.Username,
-		Role:     role,
-	}
-
-	errs, ectx := errgroup.WithContext(ctx)
-
-	// get the latest user activity, which is a pain in the ass to obtain
-
-	var lastUploadedSubmission *time.Time
-	var lastUpdatedSubmission *time.Time
-	var latestUserActivity time.Time
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-
-		filter := &types.SubmissionsFilter{
-			SubmitterID:    &user.ID,
-			ResultsPerPage: utils.Int64Ptr(1),
-			OrderBy:        utils.StrPtr("uploaded"),
-			AscDesc:        utils.StrPtr("desc"),
-		}
-
-		subs, _, err := s.dal.SearchSubmissions(dbs, filter)
+	return s.readCaches().userStatistics.Get(ctx, strconv.FormatInt(uid, 10), func(ctx context.Context) (appcache.Snapshot[*types.UserStatistics], error) {
+		rows, err := s.loadUserStatistics(ctx, &uid)
 		if err != nil {
-			return err
+			return appcache.Snapshot[*types.UserStatistics]{}, err
 		}
-		if len(subs) > 0 {
-			lastUploadedSubmission = &subs[0].UploadedAt
+		if len(rows) == 0 {
+			return appcache.Snapshot[*types.UserStatistics]{}, perr("user not found", http.StatusNotFound)
 		}
-
-		return nil
+		return appcache.Snapshot[*types.UserStatistics]{Value: rows[0], Expires: time.Now().Add(statisticsCacheTTL)}, nil
 	})
-
-	errs.Go(func() error {
-		dbs, _ := s.dal.NewSession(ectx)
-		defer dbs.Rollback()
-		var err error
-
-		filter := &types.SubmissionsFilter{
-			UpdatedByID:    &user.ID,
-			ResultsPerPage: utils.Int64Ptr(1),
-			OrderBy:        utils.StrPtr("updated"),
-			AscDesc:        utils.StrPtr("desc"),
-		}
-
-		subs, _, err := s.dal.SearchSubmissions(dbs, filter)
-		if err != nil {
-			return err
-		}
-
-		if len(subs) > 0 {
-			lastUpdatedSubmission = &subs[0].UpdatedAt
-		}
-
-		return nil
-	})
-
-	if err := errs.Wait(); err != nil {
-		utils.LogCtx(ctx).Error(err)
-		return nil, err
-	}
-
-	latestUserActivity = utils.NilTime(lastUpdatedSubmission)
-	if utils.NilTime(lastUploadedSubmission).After(latestUserActivity) {
-		latestUserActivity = utils.NilTime(lastUploadedSubmission)
-	}
-
-	us.LastUserActivity = latestUserActivity
-
-	if !us.LastUserActivity.IsZero() {
-
-		// get the user actions
-
-		errs, ectx = errgroup.WithContext(ctx)
-
-		var commentedCount int64
-		var requestedChangesCount int64
-		var approvedCount int64
-		var verifiedCount int64
-		var addedToFlashpointCount int64
-		var rejectedCount int64
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			comments, err := s.dal.GetCommentsByUserIDAndAction(dbs, user.ID, constants.ActionComment)
-			if err != nil {
-				return err
-			}
-
-			commentedCount = int64(len(comments))
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			comments, err := s.dal.GetCommentsByUserIDAndAction(dbs, user.ID, constants.ActionRequestChanges)
-			if err != nil {
-				return err
-			}
-
-			requestedChangesCount = int64(len(comments))
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			comments, err := s.dal.GetCommentsByUserIDAndAction(dbs, user.ID, constants.ActionApprove)
-			if err != nil {
-				return err
-			}
-
-			approvedCount = int64(len(comments))
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			comments, err := s.dal.GetCommentsByUserIDAndAction(dbs, user.ID, constants.ActionVerify)
-			if err != nil {
-				return err
-			}
-
-			verifiedCount = int64(len(comments))
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			comments, err := s.dal.GetCommentsByUserIDAndAction(dbs, user.ID, constants.ActionMarkAdded)
-			if err != nil {
-				return err
-			}
-
-			addedToFlashpointCount = int64(len(comments))
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			comments, err := s.dal.GetCommentsByUserIDAndAction(dbs, user.ID, constants.ActionReject)
-			if err != nil {
-				return err
-			}
-
-			rejectedCount = int64(len(comments))
-
-			return nil
-		})
-
-		if err := errs.Wait(); err != nil {
-			utils.LogCtx(ctx).Error(err)
-			return nil, err
-		}
-
-		us.UserCommentedCount = commentedCount
-		us.UserRequestedChangesCount = requestedChangesCount
-		us.UserApprovedCount = approvedCount
-		us.UserVerifiedCount = verifiedCount
-		us.UserAddedToFlashpointCount = addedToFlashpointCount
-		us.UserRejectedCount = rejectedCount
-
-		// actions on user's submissions
-
-		errs, ectx = errgroup.WithContext(ctx)
-
-		var submissionsCount int64
-		var submissionsBotHappyCount int64
-		var submissionsBotUnhappyCount int64
-		var submissionsRequestedChangesCount int64
-		var submissionsApprovedCount int64
-		var submissionsVerifiedCount int64
-		var submissionsAddedToFlashpointCount int64
-		var submissionsRejectedCount int64
-
-		errs, ectx = errgroup.WithContext(ctx)
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID: &user.ID,
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID: &user.ID,
-				BotActions:  []string{constants.ActionApprove},
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsBotHappyCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID: &user.ID,
-				BotActions:  []string{constants.ActionRequestChanges},
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsBotUnhappyCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID:            &user.ID,
-				RequestedChangedStatus: utils.StrPtr("ongoing"),
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsRequestedChangesCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID:        &user.ID,
-				ApprovalsStatus:    utils.StrPtr("approved"),
-				VerificationStatus: utils.StrPtr("none"),
-				DistinctActionsNot: []string{constants.ActionReject, constants.ActionMarkAdded},
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsApprovedCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID:        &user.ID,
-				VerificationStatus: utils.StrPtr("verified"),
-				DistinctActionsNot: []string{constants.ActionReject, constants.ActionMarkAdded},
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsVerifiedCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID:        &user.ID,
-				DistinctActions:    []string{constants.ActionMarkAdded},
-				DistinctActionsNot: []string{constants.ActionReject},
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsAddedToFlashpointCount = c
-
-			return nil
-		})
-
-		errs.Go(func() error {
-			dbs, _ := s.dal.NewSession(ectx)
-			defer dbs.Rollback()
-			var err error
-
-			filter := &types.SubmissionsFilter{
-				SubmitterID:     &user.ID,
-				DistinctActions: []string{constants.ActionReject},
-			}
-
-			_, c, err := s.dal.SearchSubmissions(dbs, filter)
-			if err != nil {
-				return err
-			}
-
-			submissionsRejectedCount = c
-
-			return nil
-		})
-
-		if err := errs.Wait(); err != nil {
-			utils.LogCtx(ctx).Error(err)
-			return nil, err
-		}
-
-		us.SubmissionsCount = submissionsCount
-		us.SubmissionsBotHappyCount = submissionsBotHappyCount
-		us.SubmissionsBotUnhappyCount = submissionsBotUnhappyCount
-		us.SubmissionsRequestedChangesCount = submissionsRequestedChangesCount
-		us.SubmissionsApprovedCount = submissionsApprovedCount
-		us.SubmissionsVerifiedCount = submissionsVerifiedCount
-		us.SubmissionsAddedToFlashpointCount = submissionsAddedToFlashpointCount
-		us.SubmissionsRejectedCount = submissionsRejectedCount
-	}
-
-	return us, nil
 }
 
 func (s *SiteService) DeveloperTagDescFromValidator(ctx context.Context) error {
@@ -3260,20 +2795,20 @@ func (s *SiteService) GetMetadataStatsPageData(ctx context.Context) (*types.Meta
 		return nil, err
 	}
 
-	memo, err, _ := s.metadataStatsCache.Memoize("metadataStats", func() (interface{}, error) {
+	memo, err := s.readCaches().metadata.Get(ctx, "metadataStats", func(ctx context.Context) (appcache.Snapshot[*types.MetadataStatsPageDataBare], error) {
 		dbs, err := s.pgdal.NewSession(ctx)
 		if err != nil {
 			utils.LogCtx(ctx).Error(err)
-			return nil, err
+			return appcache.Snapshot[*types.MetadataStatsPageDataBare]{}, err
 		}
 		defer dbs.Rollback()
 
 		data, err := s.pgdal.GetMetadataStats(dbs)
 		if err != nil {
-			return nil, err
+			return appcache.Snapshot[*types.MetadataStatsPageDataBare]{}, err
 		}
 
-		return data, err
+		return appcache.Snapshot[*types.MetadataStatsPageDataBare]{Value: data, Dependencies: []appcache.Dependency{"metadata"}}, err
 	})
 	if err != nil {
 		return nil, dberr(err)
@@ -3281,7 +2816,7 @@ func (s *SiteService) GetMetadataStatsPageData(ctx context.Context) (*types.Meta
 
 	pageData := types.MetadataStatsPageData{
 		BasePageData:              *bpd,
-		MetadataStatsPageDataBare: *memo.(*types.MetadataStatsPageDataBare),
+		MetadataStatsPageDataBare: *memo,
 	}
 
 	return &pageData, nil

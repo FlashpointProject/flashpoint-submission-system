@@ -156,6 +156,8 @@ type DAL interface {
 	GetTotalSubmissionFilesize(dbs DBSession) (int64, error)
 
 	GetUsers(dbs DBSession) ([]*types.User, error)
+	GetSiteStatistics(dbs DBSession) (*types.StatisticsPageData, error)
+	GetUserStatisticsAggregate(dbs DBSession, uid int64) ([]*types.UserStatistics, error)
 	GetAllUserStatistics(dbs DBSession) ([]*types.UserStatistics, error)
 	GetCommentsByUserIDAndAction(dbs DBSession, uid int64, action string) ([]*types.Comment, error)
 

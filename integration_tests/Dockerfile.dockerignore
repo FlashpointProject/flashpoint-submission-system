@@ -3,6 +3,7 @@
 !go.mod
 !go.sum
 !activityevents/**
+!appcache/**
 !authbot/**
 !clients/**
 !config/**

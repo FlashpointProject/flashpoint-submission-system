@@ -261,12 +261,10 @@ func (a *App) UserHasAllRoles(r *http.Request, uid int64, requiredRoles []string
 		return a.Service.GetUserRoles(ctx, uid)
 	}
 
-	userRoles, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("getUserRoles-%d", uid), getUserRoles)
+	userRoles, err := getUserRoles()
 	if err != nil {
 		return false, err
 	}
-
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached))
 
 	isAuthorized := true
 
@@ -299,12 +297,10 @@ func (a *App) UserHasAnyRole(r *http.Request, uid int64, roles []string) (bool, 
 		return a.Service.GetUserRoles(ctx, uid)
 	}
 
-	userRoles, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("getUserRoles-%d", uid), getUserRoles)
+	userRoles, err := getUserRoles()
 	if err != nil {
 		return false, err
 	}
-
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("getting user roles")
 
 	isAuthorized := constants.HasAnyRole(userRoles.([]string), roles)
 	if !isAuthorized {
@@ -320,7 +316,7 @@ func (a *App) UserOwnsResource(r *http.Request, uid int64, resourceKey string) (
 
 	searchSubmissionBySID := func(sid int64) func() (interface{}, error) {
 		return func() (interface{}, error) {
-			s, _, err := a.Service.SearchSubmissions(ctx, &types.SubmissionsFilter{SubmissionIDs: []int64{sid}})
+			s, err := a.Service.GetSubmissionSummary(ctx, sid)
 			return s, err
 		}
 	}
@@ -339,11 +335,10 @@ func (a *App) UserOwnsResource(r *http.Request, uid int64, resourceKey string) (
 			return false, fmt.Errorf("invalid submission id")
 		}
 
-		submissions, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("searchSubmissionBySID-%d", sid), searchSubmissionBySID(sid))
+		submissions, err := searchSubmissionBySID(sid)()
 		if err != nil {
 			return false, err
 		}
-		utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission by submission id")
 
 		if len(submissions.([]*types.ExtendedSubmission)) == 0 {
 			return false, fmt.Errorf("submission with id %d not found", sid)
@@ -368,11 +363,10 @@ func (a *App) UserOwnsResource(r *http.Request, uid int64, resourceKey string) (
 		}
 
 		for _, sid := range sids {
-			submissions, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("searchSubmissionBySID-%d", sid), searchSubmissionBySID(sid))
+			submissions, err := searchSubmissionBySID(sid)()
 			if err != nil {
 				return false, err
 			}
-			utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission by submission id")
 
 			if len(submissions.([]*types.ExtendedSubmission)) == 0 {
 				return false, fmt.Errorf("submission with id %d not found", sid)
@@ -393,11 +387,10 @@ func (a *App) UserOwnsResource(r *http.Request, uid int64, resourceKey string) (
 			return false, nil
 		}
 
-		submissionFiles, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("getSubmissionFileByFID-%d", fid), getSubmissionFileByFID(fid))
+		submissionFiles, err := getSubmissionFileByFID(fid)()
 		if err != nil {
 			return false, err
 		}
-		utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission file by submission file id")
 
 		sf := submissionFiles.([]*types.SubmissionFile)[0]
 		if sf.SubmitterID != uid {
@@ -514,12 +507,10 @@ func (a *App) UserCanCommentAction(r *http.Request, uid int64) (bool, error) {
 		return a.Service.GetUserRoles(ctx, uid)
 	}
 
-	userRoles, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("getUserRoles-%d", uid), getUserRoles)
+	userRoles, err := getUserRoles()
 	if err != nil {
 		return false, err
 	}
-
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached))
 
 	formAction := r.FormValue("action")
 
@@ -559,7 +550,7 @@ func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error
 
 	searchSubmissionBySID := func(sid int64) func() (interface{}, error) {
 		return func() (interface{}, error) {
-			s, _, err := a.Service.SearchSubmissions(ctx, &types.SubmissionsFilter{SubmissionIDs: []int64{sid}})
+			s, err := a.Service.GetSubmissionSummary(ctx, sid)
 			return s, err
 		}
 	}
@@ -578,11 +569,10 @@ func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error
 			return false, fmt.Errorf("invalid submission id")
 		}
 
-		submissions, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("searchSubmissionBySID-%d", sid), searchSubmissionBySID(sid))
+		submissions, err := searchSubmissionBySID(sid)()
 		if err != nil {
 			return false, err
 		}
-		utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission by submission id")
 
 		if len(submissions.([]*types.ExtendedSubmission)) == 0 {
 			return false, fmt.Errorf("submission with id %d not found", sid)
@@ -605,11 +595,10 @@ func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error
 		}
 
 		for _, sid := range sids {
-			submissions, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("searchSubmissionBySID-%d", sid), searchSubmissionBySID(sid))
+			submissions, err := searchSubmissionBySID(sid)()
 			if err != nil {
 				return false, err
 			}
-			utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission by submission id")
 
 			if len(submissions.([]*types.ExtendedSubmission)) == 0 {
 				return false, fmt.Errorf("submission with id %d not found", sid)
@@ -635,11 +624,10 @@ func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error
 		}
 
 		for _, fid := range fids {
-			submissionFile, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("getSubmissionFileByFID-%d", fid), getSubmissionFileByFID(fid))
+			submissionFile, err := getSubmissionFileByFID(fid)()
 			if err != nil {
 				return false, err
 			}
-			utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission file by submission file id")
 
 			if len(submissionFile.([]*types.SubmissionFile)) == 0 {
 				return false, fmt.Errorf("submission file with id %d not found", fid)
@@ -648,11 +636,10 @@ func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error
 			file := submissionFile.([]*types.SubmissionFile)[0]
 			sid := file.SubmissionID
 
-			submissions, err, cached := a.authMiddlewareCache.Memoize(fmt.Sprintf("searchSubmissionBySID-%d", sid), searchSubmissionBySID(sid))
+			submissions, err := searchSubmissionBySID(sid)()
 			if err != nil {
 				return false, err
 			}
-			utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("searching submission by submission id")
 
 			if len(submissions.([]*types.ExtendedSubmission)) == 0 {
 				return false, fmt.Errorf("submission with id %d not found", sid)

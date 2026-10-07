@@ -1,0 +1,32 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {JSDOM} = require('jsdom');
+const dom = new JSDOM('<div id="content-resumable"></div><div id="content-legacy"></div><div id="resumable-drop"></div><div id="progress-bars-container-resumable"></div>', {url:'https://fpfss.test', runScripts:'outside-only'});
+const w = dom.window;
+let uploader;
+w.Resumable = function(options) { uploader=this; this.options=options; this.support=true; this.assignBrowse=this.assignDrop=this.on=()=>{}; };
+w.eval(fs.readFileSync(path.join(__dirname,'../../static/resumable/uploader.js'),'utf8'));
+w.initResumableUploader('/api/submission-receiver-resumable/42',1,[],true);
+const nativeFile = {name:'same-file.7z',size:123,lastModified:456};
+const identify = uploader.options.generateUniqueIdentifier;
+const first=identify(nativeFile);
+assert.equal(identify(nativeFile),first,'reload resumes the same attempt');
+let retried=0;
+const file={file:nativeFile,name:nativeFile.name,progressText:w.document.createElement('span'),retry:()=>retried++};
+let status={status:'failed',message:'temporary failure',submission_id:null};
+w.XMLHttpRequest = class {
+ open(){} addEventListener(_,fn){this.callback=fn;} send(){this.status=200;this.response=JSON.stringify({status});this.callback();}
+};
+w.pollUploadStatus(file, 'tracking');
+assert.equal(Object.keys(uploader.options.query(file)).length,0,'normal retransmits do not retry processing');
+file.progressText.querySelector('button').click();
+assert.equal(retried,1);
+assert.equal(uploader.options.query(file).resumableRetry,1);
+assert.equal(identify(nativeFile),first,'retry keeps the same attempt');
+status={status:'success',message:null,submission_id:42};
+w.pollUploadStatus(file,'tracking');
+assert.notEqual(identify(nativeFile),first,'a later intentional upload gets a new attempt');
+w.initResumableUploader('/api/submission-receiver-resumable/43',1,[],true);
+assert.notEqual(uploader.options.generateUniqueIdentifier(nativeFile),first,'another submission has its own attempt');
+dom.window.close();

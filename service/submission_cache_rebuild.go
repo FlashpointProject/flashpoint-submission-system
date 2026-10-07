@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/FlashpointProject/flashpoint-submission-system/database"
 )
 
 // SubmissionCacheRebuildResult reports only durably committed work. A failed run
@@ -49,6 +50,7 @@ func (s *SiteService) recomputeSubmissionCacheAll(ctx context.Context, batchSize
 					return err
 				}
 				defer dbs.Rollback()
+				database.InvalidateSubmissionRead(dbs, sid)
 				if err := s.dal.RebuildSubmissionCacheTable(dbs, sid); err != nil {
 					return err
 				}

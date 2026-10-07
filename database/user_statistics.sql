@@ -17,7 +17,7 @@ WITH submitted AS (
     FROM submission s
     JOIN submission_cache sc ON sc.fk_submission_id = s.id
     JOIN submission_file f ON f.id = sc.fk_oldest_file_id
-    WHERE s.deleted_at IS NULL
+    WHERE s.deleted_at IS NULL /*SUBMITTED_USER*/
     GROUP BY f.fk_user_id
 ), actions AS (
     SELECT x.uid, MAX(x.last_activity) AS last_activity,
@@ -31,7 +31,7 @@ WITH submitted AS (
         SELECT c.fk_user_id AS uid, c.fk_action_id AS aid,
             COUNT(*) AS n, MAX(c.created_at) AS last_activity
         FROM comment c
-        WHERE c.deleted_at IS NULL
+        WHERE c.deleted_at IS NULL /*ACTION_USER*/
         GROUP BY c.fk_user_id, c.fk_action_id
     ) x
     LEFT JOIN action a ON a.id = x.aid
@@ -41,6 +41,7 @@ WITH submitted AS (
         MAX(BINARY r.name IN (/*STAFF_ROLES*/)) AS staff,
         MAX(BINARY r.name = ?) AS trial
     FROM discord_user_role ur JOIN discord_role r ON r.id = ur.fk_rid
+    /*ROLE_USER*/
     GROUP BY ur.fk_uid
 )
 SELECT u.id, u.username, COALESCE(r.staff, 0), COALESCE(r.trial, 0), a.last_activity,
@@ -53,4 +54,5 @@ FROM discord_user u
 LEFT JOIN submitted s ON s.uid = u.id
 LEFT JOIN actions a ON a.uid = u.id
 LEFT JOIN roles r ON r.uid = u.id
+/*USER*/
 ORDER BY u.id

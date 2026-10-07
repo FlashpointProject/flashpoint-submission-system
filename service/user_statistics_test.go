@@ -3,8 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
-	"sync/atomic"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,74 +11,6 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/stretchr/testify/require"
 )
-
-func TestUserStatisticsCacheSharesRefreshAndAllowsCancellation(t *testing.T) {
-	var cache userStatisticsCache
-	var calls atomic.Int32
-	started, release := make(chan struct{}), make(chan struct{})
-	load := func(ctx context.Context) ([]*types.UserStatistics, error) {
-		calls.Add(1)
-		close(started)
-		<-release
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		deadline, ok := ctx.Deadline()
-		if !ok || time.Until(deadline) > userStatisticsTimeout {
-			return nil, errors.New("refresh must have bounded deadline")
-		}
-		return []*types.UserStatistics{{UserID: "123", UserCommentedCount: 7}}, nil
-	}
-	leader, cancel := context.WithCancel(context.Background())
-	first := make(chan error, 1)
-	go func() { _, err := cache.get(leader, load); first <- err }()
-	<-started
-	cancel()
-	require.ErrorIs(t, <-first, context.Canceled)
-	const waiters = 12
-	var wg sync.WaitGroup
-	results := make(chan *types.UserStatisticsResponse, waiters)
-	errs := make(chan error, waiters)
-	for i := 0; i < waiters; i++ {
-		wg.Add(1)
-		go func() { defer wg.Done(); s, e := cache.get(context.Background(), load); results <- s; errs <- e }()
-	}
-	close(release)
-	wg.Wait()
-	for i := 0; i < waiters; i++ {
-		require.NoError(t, <-errs)
-		require.EqualValues(t, 7, (<-results).Users[0].UserCommentedCount)
-	}
-	require.EqualValues(t, 1, calls.Load())
-}
-
-func TestUserStatisticsCacheRetriesFailuresAndRefreshesExpiredData(t *testing.T) {
-	var cache userStatisticsCache
-	cause := errors.New("database unavailable")
-	_, err := cache.get(context.Background(), func(context.Context) ([]*types.UserStatistics, error) { return nil, cause })
-	require.ErrorIs(t, err, cause)
-	require.Nil(t, cache.fresh())
-	first, err := cache.get(context.Background(), func(context.Context) ([]*types.UserStatistics, error) { return nil, nil })
-	require.NoError(t, err)
-	require.NotNil(t, first.Users, "empty result must encode as []")
-	require.False(t, first.GeneratedAt.IsZero())
-	cache.mu.Lock()
-	cache.expires = time.Now().Add(-time.Second)
-	cache.mu.Unlock()
-	next, err := cache.get(context.Background(), func(context.Context) ([]*types.UserStatistics, error) {
-		return []*types.UserStatistics{{UserID: "42"}}, nil
-	})
-	require.NoError(t, err)
-	require.Equal(t, "42", next.Users[0].UserID)
-	require.Empty(t, first.Users, "refresh does not mutate old snapshots")
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err = cache.get(canceled, func(context.Context) ([]*types.UserStatistics, error) {
-		t.Fatal("canceled request loaded data")
-		return nil, nil
-	})
-	require.ErrorIs(t, err, context.Canceled)
-}
 
 type statisticsSession struct {
 	database.DBSession
@@ -138,7 +69,11 @@ func (d *statisticsPGDAL) GetLatestSubmissionActivity(_ database.PGDBSession, id
 	if d.failure == "pg-query" {
 		return nil, d.cause
 	}
-	return map[int64]time.Time{ids[0]: time.Unix(20, 0), ids[1]: time.Unix(40, 0)}, nil
+	result := map[int64]time.Time{ids[0]: time.Unix(20, 0)}
+	if len(ids) > 1 {
+		result[ids[1]] = time.Unix(40, 0)
+	}
+	return result, nil
 }
 
 func TestUserStatisticsServiceMergesActivityAndReleasesSessions(t *testing.T) {
@@ -165,6 +100,65 @@ func TestUserStatisticsServiceMergesActivityAndReleasesSessions(t *testing.T) {
 			if pgdal.session != nil {
 				require.True(t, pgdal.session.closed)
 			}
+		})
+	}
+}
+
+func (d *statisticsDAL) GetUserStatisticsAggregate(_ database.DBSession, uid int64) ([]*types.UserStatistics, error) {
+	if d.failure == "maria-query" {
+		return nil, d.cause
+	}
+	return []*types.UserStatistics{{UserID: strconv.FormatInt(uid, 10)}}, nil
+}
+func (d *statisticsDAL) GetSiteStatistics(database.DBSession) (*types.StatisticsPageData, error) {
+	if d.failure == "maria-query" {
+		return nil, d.cause
+	}
+	return &types.StatisticsPageData{SubmissionCount: 42}, nil
+}
+
+func TestStatisticsCachesReuseDataAndRetryFailures(t *testing.T) {
+	for _, kind := range []string{"site", "all-users", "user"} {
+		t.Run(kind, func(t *testing.T) {
+			failure := errors.New("database unavailable")
+			dal := &statisticsDAL{failure: "maria-query", cause: failure}
+			pgdal := &statisticsPGDAL{maria: dal}
+			s := &SiteService{dal: dal, pgdal: pgdal}
+			ctx := context.Background()
+			load := func() (any, error) {
+				switch kind {
+				case "site":
+					return s.GetStatisticsPageData(ctx)
+				case "all-users":
+					return s.GetAllUserStatistics(ctx)
+				default:
+					return s.GetUserStatistics(ctx, 1002)
+				}
+			}
+			_, err := load()
+			require.ErrorIs(t, err, failure)
+			dal.failure = ""
+			first, err := load()
+			require.NoError(t, err)
+			originalSession := dal.session
+			// Cached calls must not touch the database, even if it subsequently fails.
+			dal.failure = "maria-session"
+			again, err := load()
+			require.NoError(t, err)
+			require.Equal(t, first, again)
+			require.Same(t, originalSession, dal.session)
+			switch v := first.(type) {
+			case *types.StatisticsPageData:
+				v.SubmissionCount = 999
+			case *types.UserStatisticsResponse:
+				v.Users[0].Username = "caller edit"
+			case *types.UserStatistics:
+				v.Username = "caller edit"
+			}
+			independent, err := load()
+			require.NoError(t, err)
+			require.Equal(t, again, independent)
+			require.NotEqual(t, first, independent)
 		})
 	}
 }

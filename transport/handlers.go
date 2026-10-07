@@ -20,8 +20,6 @@ import (
 
 	"github.com/FlashpointProject/flashpoint-submission-system/activityevents"
 
-	"github.com/kofalt/go-memoize"
-
 	"github.com/FlashpointProject/flashpoint-submission-system/clients"
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
@@ -77,8 +75,6 @@ func NoCache(h http.Handler) http.Handler {
 
 	return http.HandlerFunc(fn)
 }
-
-var pageDataCache = memoize.NewMemoizer(24*time.Hour, 48*time.Hour)
 
 func (a *App) HandleCommentReceiverBatch(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -1868,28 +1864,11 @@ func (a *App) HandleDeleteUserSessions(w http.ResponseWriter, r *http.Request) {
 func (a *App) HandleStatisticsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	f := func() (interface{}, error) {
-		pageData, err := a.Service.GetStatisticsPageData(ctx)
-		if err != nil {
-			utils.LogCtx(ctx).Error(err)
-			writeError(ctx, w, err)
-			return nil, err
-		}
-		return pageData, nil
-	}
-
-	const key = "GetStatisticsPageData"
-
-	pageDataI, err, cached := pageDataCache.Memoize(key, f)
+	pageData, err := a.Service.GetStatisticsPageData(ctx)
 	if err != nil {
 		writeError(ctx, w, err)
-		pageDataCache.Storage.Delete(key)
 		return
 	}
-
-	pageData := pageDataI.(*types.StatisticsPageData)
-
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).Debug("getting statistics page data")
 
 	if utils.RequestType(ctx) != constants.RequestWeb {
 		writeResponse(ctx, w, pageData, http.StatusOK)
@@ -1971,28 +1950,11 @@ func (a *App) HandleGetUserStatistics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f := func() (interface{}, error) {
-		us, err := a.Service.GetUserStatistics(ctx, uid)
-		if err != nil {
-			utils.LogCtx(ctx).Error(err)
-			writeError(ctx, w, err)
-			return nil, err
-		}
-		return us, nil
-	}
-
-	key := fmt.Sprintf("GetUserStatistics-%d", uid)
-
-	usI, err, cached := pageDataCache.Memoize(key, f)
+	us, err := a.Service.GetUserStatistics(ctx, uid)
 	if err != nil {
 		writeError(ctx, w, err)
-		pageDataCache.Storage.Delete(key)
 		return
 	}
-
-	us := usI.(*types.UserStatistics)
-
-	utils.LogCtx(ctx).WithField("cached", utils.BoolToString(cached)).WithField("uid", uid).Debug("getting user statistics")
 
 	writeResponse(ctx, w, us, http.StatusOK)
 }
@@ -2255,4 +2217,10 @@ func (a *App) HandleRecommendationPlaygroundPage(w http.ResponseWriter, r *http.
 	}
 
 	a.RenderTemplates(ctx, w, r, pageData, "templates/recommendation-playground.gohtml")
+}
+
+// HandleApplicationCacheStats exposes aggregate counters without cache keys.
+func (a *App) HandleApplicationCacheStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeResponse(r.Context(), w, a.Service.ApplicationCacheStats(), http.StatusOK)
 }

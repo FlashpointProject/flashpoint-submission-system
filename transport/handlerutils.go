@@ -20,10 +20,7 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/Masterminds/sprig"
-	"github.com/kofalt/go-memoize"
 )
-
-var templateCache = memoize.NewMemoizer(10*time.Minute, 60*time.Minute)
 
 // RenderTemplates is a helper for rendering templates
 func (a *App) RenderTemplates(ctx context.Context, w http.ResponseWriter, r *http.Request, data interface{}, filenames ...string) {
@@ -65,7 +62,21 @@ func (a *App) RenderTemplates(ctx context.Context, w http.ResponseWriter, r *htt
 	if a.Conf.IsDev {
 		result, err = parse()
 	} else {
-		result, err, cached = templateCache.Memoize(strings.Join(templates, ","), parse)
+		a.templateMu.Lock()
+		key := strings.Join(templates, ",")
+		if a.templates == nil {
+			a.templates = make(map[string]*template.Template)
+		}
+		if existing := a.templates[key]; existing != nil {
+			result = existing
+			cached = true
+		} else {
+			result, err = parse()
+			if err == nil {
+				a.templates[key] = result.(*template.Template)
+			}
+		}
+		a.templateMu.Unlock()
 	}
 	if err != nil {
 		utils.LogCtx(ctx).Error(err)
