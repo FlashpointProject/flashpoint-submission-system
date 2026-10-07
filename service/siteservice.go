@@ -1065,10 +1065,26 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 	}
 	// External enrichment is deliberately outside the submission snapshot.
 	tags, _ := s.validator.GetTags(ctx)
+	// Match the template's case/whitespace normalization, but only expose this
+	// submission's catalogue entries. Keep the validator's shared list intact.
+	submissionTagNames := make(map[string]bool)
+	if snapshot.Meta != nil && snapshot.Meta.Tags != nil {
+		for _, name := range strings.Split(*snapshot.Meta.Tags, ";") {
+			if name = strings.ToLower(strings.TrimSpace(name)); name != "" {
+				submissionTagNames[name] = true
+			}
+		}
+	}
+	submissionTags := make([]types.Tag, 0)
+	for _, tag := range tags {
+		if submissionTagNames[strings.ToLower(strings.TrimSpace(tag.Name))] {
+			submissionTags = append(submissionTags, tag)
+		}
+	}
 	return &types.ViewSubmissionPageData{
 		SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
 		CurationMeta:        snapshot.Meta, Comments: snapshot.Comments, CurationImageIDs: snapshot.ImageIDs,
-		IsUserSubscribed: subscribed, TagList: tags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
+		IsUserSubscribed: subscribed, TagList: submissionTags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
 	}, nil
 }
 func (s *SiteService) loadSubmissionSnapshot(ctx context.Context, sid int64) (submissionSnapshot, error) {
