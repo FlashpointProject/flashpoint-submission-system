@@ -53,6 +53,7 @@ func TestSubmissionCacheActionHistories(t *testing.T) {
 		{"verification assignment", "active_assigned_verification_ids", "assign-verification", "unassign-verification"},
 		{"requested changes cleared by approve", "active_requested_changes_ids", "request-changes", "approve"},
 		{"requested changes cleared by verify", "active_requested_changes_ids", "request-changes", "verify"},
+		{"requested changes withdrawn by upload", "active_requested_changes_ids", "request-changes", "upload-file"},
 		{"approval", "active_approved_ids", "approve", "request-changes"},
 		{"verification", "active_verified_ids", "verify", "request-changes"},
 	}
@@ -134,6 +135,31 @@ func TestSubmissionCacheUploadVersionBoundaries(t *testing.T) {
 			require.Equal(t, "101,102,103", cacheSnapshot(t, f, sid)[column], "deleting newest version restores prior version boundary")
 		})
 	}
+}
+
+func TestSubmissionCacheUploadWithdrawalHistory(t *testing.T) {
+	f := newSQLFixture(t)
+	f.User(t, 101, "requester")
+	f.User(t, 102, "other uploader")
+	f.Submission(t, 2000, "staff")
+	f.File(t, fixtureFile{ID: 1, SubmissionID: 2000, UserID: 102, At: fixtureEpoch})
+	f.Comment(t, 1, 2000, 101, "request-changes", fixtureEpoch.Add(time.Second), nil)
+	f.Comment(t, 2, 2000, 101, "edit-meta", fixtureEpoch.Add(2*time.Second), nil)
+	f.Rebuild(t, 2000)
+	require.Equal(t, "101", cacheSnapshot(t, f, 2000)["active_requested_changes_ids"], "metadata edits do not withdraw requests")
+	f.File(t, fixtureFile{ID: 2, SubmissionID: 2000, UserID: 101, At: fixtureEpoch.Add(3 * time.Second)})
+	f.Comment(t, 3, 2000, 101, "upload-file", fixtureEpoch.Add(3*time.Second), nil)
+	f.Rebuild(t, 2000)
+	require.Empty(t, cacheSnapshot(t, f, 2000)["active_requested_changes_ids"])
+	// Removing the archive does not erase the recorded withdrawal. Moderators
+	// can undo the withdrawal by deleting its action, as with approve/verify.
+	_, err := f.Maria.Exec("UPDATE submission_file SET deleted_at=? WHERE id=2", fixtureEpoch.Add(4*time.Second))
+	require.NoError(t, err)
+	f.Rebuild(t, 2000)
+	require.Empty(t, cacheSnapshot(t, f, 2000)["active_requested_changes_ids"])
+	deleteFixtureComment(t, f, 3)
+	f.Rebuild(t, 2000)
+	require.Equal(t, "101", cacheSnapshot(t, f, 2000)["active_requested_changes_ids"])
 }
 
 func TestSubmissionCacheDeletedFilesBotRejectAndRebuild(t *testing.T) {

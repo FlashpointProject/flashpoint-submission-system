@@ -43,7 +43,7 @@ func generatedHistory(seed int64) []historyOp {
 		add(historyOp{Kind: "file", ID: sid, Submission: sid, User: users[sid-1], Micros: 0})
 		add(historyOp{Kind: "comment", ID: sid, Submission: sid, User: constants.ValidatorID, Micros: 1, Action: "approve"})
 	}
-	actions := []string{"assign-testing", "unassign-testing", "assign-verification", "unassign-verification", "request-changes", "approve", "verify", "comment", "mark-added", "reject"}
+	actions := []string{"assign-testing", "unassign-testing", "assign-verification", "unassign-verification", "request-changes", "approve", "verify", "comment", "mark-added", "reject", "upload-file", "edit-meta"}
 	fileTotals := map[int64]int{1: 1, 2: 1, 3: 1}
 	for step := 0; step < 72; step++ {
 		sid := int64(1 + rng.Intn(3))

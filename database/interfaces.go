@@ -78,6 +78,7 @@ type PGDAL interface {
 
 	CreateActivityEvent(dbs PGDBSession, event *activityevents.ActivityEvent) error
 	GetActivityEvents(dbs PGDBSession, filter *types.ActivityEventsFilter) ([]*activityevents.ActivityEvent, error)
+	GetLatestSubmissionActivity(dbs PGDBSession, userIDs []int64) (map[int64]time.Time, error)
 
 	GetFrozenGames(dbs PGDBSession) ([]*types.AutounfreezerGame, error)
 }
@@ -155,6 +156,7 @@ type DAL interface {
 	GetTotalSubmissionFilesize(dbs DBSession) (int64, error)
 
 	GetUsers(dbs DBSession) ([]*types.User, error)
+	GetAllUserStatistics(dbs DBSession) ([]*types.UserStatistics, error)
 	GetCommentsByUserIDAndAction(dbs DBSession, uid int64, action string) ([]*types.Comment, error)
 
 	PopulateRevisionInfo(dbs DBSession, revisions []*types.RevisionInfo) error

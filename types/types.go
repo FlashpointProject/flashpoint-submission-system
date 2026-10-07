@@ -762,6 +762,12 @@ type GamePageResJSON struct {
 	PlatformRelations [][]string       `json:"platform_relations"`
 }
 
+// UserStatisticsResponse is a complete snapshot shared for at most one minute.
+type UserStatisticsResponse struct {
+	Users       []*UserStatistics `json:"users"`
+	GeneratedAt time.Time         `json:"generated_at"`
+}
+
 type UserStatistics struct {
 	UserID           string
 	Username         string

@@ -550,252 +550,62 @@ function setColors() {
     }
 }
 
-function populateUserStatisticsTable() {
-    let request = new XMLHttpRequest();
-    request.open("GET", "/api/users", true);
-
-    request.addEventListener("loadend", function () {
-        if (request.status !== 200) {
-            return;
-        }
-
-        let users = null;
-        try {
-            users = JSON.parse(request.response);
-        } catch (err) {
-            console.error(err);
-            alert("there was an error receiving the data, refresh the page to try again");
-            return;
-        }
-
-        processUserStatisticsInParallel(users.users, 4); // Configurable number of parallel requests
-    });
-
+async function populateUserStatisticsTable() {
+    const table = document.getElementById("users-table");
+    if (table.dataset.loading === "true") return;
+    const status = document.getElementById("user-statistics-status");
+    const retry = document.getElementById("user-statistics-retry");
+    table.dataset.loading = "true";
+    table.setAttribute("aria-busy", "true");
+    status.textContent = "Loading user statistics…";
+    retry.hidden = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 35000);
     try {
-        request.send();
-    } catch (err) {
-        alert(`exception '${err.message}'`);
-    }
-}
-
-function processUserStatisticsInParallel(users, maxParallel) {
-    let index = 0;
-
-    function processNextBatch() {
-        const promises = [];
-        for (let i = 0; i < maxParallel && index < users.length; i++, index++) {
-            promises.push(fetchUserStatistics(users[index]));
-        }
-        return Promise.all(promises).then(() => {
-            if (index < users.length) {
-                return processNextBatch();
-            }
+        const response = await fetch("/api/user-statistics/all", {
+            headers: { "Accept": "application/json" },
+            signal: controller.signal,
         });
-    }
-
-    processNextBatch().then(() => {
-        console.log("All user statistics processed");
-    });
-}
-
-function fetchUserStatistics(user) {
-    return new Promise((resolve, reject) => {
-        let request = new XMLHttpRequest();
-        request.open("GET", `/api/user-statistics/${user.id}`, true);
-
-        request.addEventListener("loadend", function () {
-            if (request.status === 200) {
-                let stats = null;
-                try {
-                    stats = JSON.parse(request.response);
-                    addUserStatsToTable(stats);
-                    resolve();
-                } catch (err) {
-                    console.error(err);
-                    alert("there was an error receiving the data, refresh the page to try again");
-                    reject(err);
-                }
-            } else {
-                reject(new Error(`Request failed with status: ${request.status}`));
-            }
-        });
-
-        try {
-            request.send();
-        } catch (err) {
-            alert(`exception '${err.message}'`);
-            reject(err);
-        }
-    });
-}
-
-function addUserStatsToTable(stats) {
-    let table = document.getElementById("users-table");
-    let row = table.insertRow(-1);
-
-    let cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserID
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.Username
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.Role
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.LastUserActivity
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserCommentedCount
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserRequestedChangesCount
-    cell.classList.add("bgr-request-changes")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserApprovedCount
-    cell.classList.add("bgr-approve")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserVerifiedCount
-    cell.classList.add("bgr-verify")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserAddedToFlashpointCount
-    cell.classList.add("bgr-mark-added")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.UserRejectedCount
-    cell.classList.add("bgr-reject")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsCount
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsBotHappyCount
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsBotUnhappyCount
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsRequestedChangesCount
-    cell.classList.add("bgr-request-changes")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsApprovedCount
-    cell.classList.add("bgr-approve")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsVerifiedCount
-    cell.classList.add("bgr-verify")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsAddedToFlashpointCount
-    cell.classList.add("bgr-mark-added")
-
-    cell = row.insertCell(-1)
-    cell.innerHTML = stats.SubmissionsRejectedCount
-    cell.classList.add("bgr-reject")
-}
-
-function processOneUserStatistics(users, index) {
-    if (index >= users.length) {
-        return
-    }
-
-    let userID = users[index].id
-
-    let request = new XMLHttpRequest()
-    request.open("GET", `/api/user-statistics/${userID}`, true)
-
-    request.addEventListener("loadend", function () {
-        if (request.status === 200) {
-            let stats = null
-        try {
-            stats = JSON.parse(request.response)
-        } catch (err) {
-            console.error(err)
-            alert("there was an error receiving the data, refresh the page to try again")
-            return
-        }
-
-        let table = document.getElementById("users-table")
-        let row = table.insertRow(-1)
-
-        // could this be done using some map fuckery? probably!
-        let cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserID
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.Username
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.Role
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.LastUserActivity
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserCommentedCount
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserRequestedChangesCount
-        cell.classList.add("bgr-request-changes")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserApprovedCount
-        cell.classList.add("bgr-approve")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserVerifiedCount
-        cell.classList.add("bgr-verify")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserAddedToFlashpointCount
-        cell.classList.add("bgr-mark-added")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.UserRejectedCount
-        cell.classList.add("bgr-reject")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsCount
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsBotHappyCount
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsBotUnhappyCount
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsRequestedChangesCount
-        cell.classList.add("bgr-request-changes")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsApprovedCount
-        cell.classList.add("bgr-approve")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsVerifiedCount
-        cell.classList.add("bgr-verify")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsAddedToFlashpointCount
-        cell.classList.add("bgr-mark-added")
-
-        cell = row.insertCell(-1)
-        cell.innerHTML = stats.SubmissionsRejectedCount
-        cell.classList.add("bgr-reject")
-        }
-
-        processOneUserStatistics(users, index+1)
-    })
-
-    try {
-        request.send()
+        if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+        const data = await response.json();
+        if (!Array.isArray(data.users)) throw new Error("Invalid statistics response");
+        const fragment = document.createDocumentFragment();
+        for (const stats of data.users) fragment.appendChild(createUserStatisticsRow(stats));
+        table.replaceChildren(fragment);
+        status.textContent = data.users.length === 0 ? "No users found." :
+            `Loaded ${data.users.length} users. Statistics update at most once per minute.`;
     } catch (err) {
-        alert(`exception '${err.message}'`)
+        console.error(err);
+        status.textContent = "Unable to load user statistics. Please try again.";
+        retry.hidden = false;
+    } finally {
+        clearTimeout(timeout);
+        delete table.dataset.loading;
+        table.setAttribute("aria-busy", "false");
     }
+}
+
+function createUserStatisticsRow(stats) {
+    if (!stats || typeof stats !== "object") throw new Error("Invalid user statistics");
+    const row = document.createElement("tr");
+    const columns = [
+        ["UserID"], ["Username"], ["Role"], ["LastUserActivity"], ["UserCommentedCount"],
+        ["UserRequestedChangesCount", "bgr-request-changes"],
+        ["UserApprovedCount", "bgr-approve"], ["UserVerifiedCount", "bgr-verify"],
+        ["UserAddedToFlashpointCount", "bgr-mark-added"], ["UserRejectedCount", "bgr-reject"],
+        ["SubmissionsCount"], ["SubmissionsBotHappyCount"], ["SubmissionsBotUnhappyCount"],
+        ["SubmissionsRequestedChangesCount", "bgr-request-changes"],
+        ["SubmissionsApprovedCount", "bgr-approve"], ["SubmissionsVerifiedCount", "bgr-verify"],
+        ["SubmissionsAddedToFlashpointCount", "bgr-mark-added"], ["SubmissionsRejectedCount", "bgr-reject"],
+    ];
+    for (const [field, className] of columns) {
+        const cell = row.insertCell(-1);
+        const value = stats[field];
+        cell.textContent = field === "LastUserActivity" && (!value || value.startsWith("0001-"))
+            ? "" : (value ?? "");
+        if (className) cell.classList.add(className);
+    }
+    return row;
 }
 
 function doDeviceFlowAction(userCode, action) {
