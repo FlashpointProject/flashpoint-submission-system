@@ -87,9 +87,11 @@ Coverage includes Unicode, literal SQL/wildcard punctuation, deleted comments an
 submissions, multiple matching comments, separate messages that must not form a
 phrase, edits/deletions without cache rebuilds, pagination/counts, both HTTP search
 endpoints, HTML escaping, and form reset/layout switching. These fixtures verify
-correctness, not production-scale search latency. The query uses EXISTS and the
-existing comment-to-submission index; arbitrary substring matching still requires
-examining message text and has no ordinary text-index lookup.
+correctness, not production-scale search latency. The query materializes distinct matching submission IDs before pagination and
+uses the existing comment-to-submission index for constrained searches. Arbitrary
+substring matching still requires examining message text and has no ordinary
+text-index lookup. Expensive filter totals are computed before pagination in the
+same query, with a transaction-local fallback for pages past the end.
 
 ## Search quick filters
 

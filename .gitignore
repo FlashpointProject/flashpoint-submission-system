@@ -43,3 +43,5 @@ snapshot-results/
 
 cmd/*
 scripts/*
+tools/*
+snapshot-results/*
