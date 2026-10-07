@@ -881,10 +881,6 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleInternalPage, types.AuthScopeAll), isGod), false))).
 		Methods("GET")
 
-	//router.Handle("/api/internal/update-master-db",
-	//	http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleUpdateMasterDB, types.AuthScopeAll), isGod), false))).
-	//	Methods("GET")
-
 	router.Handle("/api/internal/recompute-submission-cache-all",
 		http.HandlerFunc(a.RequestWeb(a.UserAuthMux(a.RequestScope(a.HandleRecomputeSubmissionCacheAll, types.AuthScopeAll), isGod), false))).
 		Methods("POST")

@@ -906,12 +906,6 @@ func (d *mysqlDAL) GetPreviousSubmission(dbs DBSession, sid int64) (int64, error
 	return psid, nil
 }
 
-// ClearMasterDBGames clears the masterdb metadata table
-func (d *mysqlDAL) ClearMasterDBGames(dbs DBSession) error {
-	_, err := dbs.Tx().ExecContext(dbs.Ctx(), `DELETE FROM masterdb_game`)
-	return err
-}
-
 // StoreMasterDBGames stores games into the masterdb metadata table
 func (d *mysqlDAL) StoreMasterDBGames(dbs DBSession, games []*types.MasterDatabaseGame) error {
 	if len(games) == 0 {

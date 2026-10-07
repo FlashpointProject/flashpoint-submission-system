@@ -1673,30 +1673,6 @@ func (a *App) HandleInternalPage(w http.ResponseWriter, r *http.Request) {
 	a.RenderTemplates(ctx, w, r, pageData, "templates/internal.gohtml")
 }
 
-//var updateMasterDBGuard = make(chan struct{}, 1)
-//
-//func (a *App) HandleUpdateMasterDB(w http.ResponseWriter, r *http.Request) {
-//	ctx := r.Context()
-//
-//	select {
-//	case updateMasterDBGuard <- struct{}{}:
-//		utils.LogCtx(ctx).Debug("starting update master db")
-//	default:
-//		writeResponse(ctx, w, presp("update master db already running", http.StatusForbidden), http.StatusForbidden)
-//		return
-//	}
-//
-//	go func() {
-//		err := a.Service.UpdateMasterDB(context.WithValue(context.Background(), utils.CtxKeys.Log, utils.LogCtx(ctx)))
-//		if err != nil {
-//			utils.LogCtx(ctx).Error(err)
-//		}
-//		<-updateMasterDBGuard
-//	}()
-//
-//	writeResponse(ctx, w, presp("starting update master db", http.StatusOK), http.StatusOK)
-//}
-
 func (a *App) HandleHelpPage(w http.ResponseWriter, r *http.Request) {
 	// TODO all auth-free pages should use a middleware to remove all of this user ID handling from the handlers
 	ctx := r.Context()

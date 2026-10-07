@@ -1,14 +1,6 @@
 {{define "main"}}
     <div class="content">
         <h1>God Tools</h1>
-        <a class="pure-button pure-button-primary"
-           href="/api/internal/update-master-db">
-            Pull Master Database From Bluebot Server (Disabled, only pulls from local directory)
-        </a>
-
-        <br>
-        <br>
-
         <form action="/api/internal/recompute-submission-cache-all" method="POST">
             <button type="submit" class="pure-button pure-button-primary">Recompute Submission Cache</button>
         </form>
