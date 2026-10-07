@@ -22,6 +22,7 @@ func (a *App) handleRequests(l *logrus.Entry, srv *http.Server, router *mux.Rout
 }
 
 func (a *App) setupRoutes(router *mux.Router) {
+	a.setupPreviewRoutes(router)
 	isStaff := func(r *http.Request, uid int64) (bool, error) {
 		return a.UserHasAnyRole(r, uid, constants.StaffRoles())
 	}

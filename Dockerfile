@@ -19,4 +19,5 @@ COPY --from=build /fpfss /fpfss
 COPY /templates /templates
 COPY /static /static
 COPY /docs /docs
+COPY /linkpreview/fonts/LICENSE /licenses/liberation-fonts.txt
 CMD ["/fpfss"]
