@@ -259,6 +259,16 @@
 
                         {{template "submission-filter-maturity" .}}
                         {{template "submission-filter-frozen" .}}
+                        <div class="form-column-text">
+                            <fieldset>
+                                <legend>Filter by comments</legend>
+                                <label for="comment-partial">Comment contains</label>
+                                <input id="comment-partial" name="comment-partial" type="text"
+                                       value="{{default "" .Filter.CommentPartial}}"
+                                       aria-describedby="comment-partial-help">
+                                <small id="comment-partial-help">Case-insensitive text in any non-deleted comment, including review messages. Matches the whole phrase literally and combines with other filters.</small>
+                            </fieldset>
+                        </div>
                     </div>
                 </div>
                 <div class="pure-u-11-24">

@@ -70,6 +70,27 @@ use the runner. Old `absolute.env`, `test_data` and developer database container
 are neither used nor deleted by this setup. `make -C integration_tests test` is an
 alias for the full containerized run; the old rebuild/migrate targets are removed.
 
+## Comment search
+
+```sh
+bash integration_tests/run.sh -run '^TestSubmission(SearchComments|QuickFilter|FilterLayoutSwitch)'
+```
+
+`comment-partial` matches a literal, case-insensitive substring within any one
+non-deleted comment message, including review actions and bot messages across
+upload versions. Accents and punctuation remain significant. An empty value
+disables the filter; legacy entries have no comments and cannot match. It combines
+with the other submission filters using AND. Action/state filters still apply to
+the submission, not necessarily to the comment containing the matching text.
+
+Coverage includes Unicode, literal SQL/wildcard punctuation, deleted comments and
+submissions, multiple matching comments, separate messages that must not form a
+phrase, edits/deletions without cache rebuilds, pagination/counts, both HTTP search
+endpoints, HTML escaping, and form reset/layout switching. These fixtures verify
+correctness, not production-scale search latency. The query uses EXISTS and the
+existing comment-to-submission index; arbitrary substring matching still requires
+examining message text and has no ordinary text-index lookup.
+
 ## Search quick filters
 
 ```sh

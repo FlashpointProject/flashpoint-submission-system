@@ -162,6 +162,7 @@ type SubmissionsFilter struct {
 	SubmissionIDs                  []int64  `schema:"submission-id"`
 	SubmitterID                    *int64   `schema:"submitter-id"`
 	TitlePartial                   *string  `schema:"title-partial"`
+	CommentPartial                 *string  `schema:"comment-partial"`
 	SubmitterUsernamePartial       *string  `schema:"submitter-username-partial"`
 	PlatformPartial                *string  `schema:"platform-partial"`
 	LibraryPartial                 *string  `schema:"library-partial"`
