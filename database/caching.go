@@ -249,6 +249,8 @@ func getDistinctActions(dbs DBSession, sid int64) (result *string, err error) {
 }
 
 func getBotAction(dbs DBSession, sid int64) (result *string, err error) {
+	// Bound the window input explicitly: MariaDB 11.1.5 does not push the
+	// outer submission predicate into this CTE for prepared statements.
 	row := dbs.Tx().QueryRowContext(dbs.Ctx(), `
 		WITH ranked_comment AS (
 			SELECT c.*,
@@ -259,6 +261,7 @@ func getBotAction(dbs DBSession, sid int64) (result *string, err error) {
 			FROM comment AS c
 			WHERE c.fk_user_id = 810112564787675166
 				AND c.deleted_at IS NULL
+				AND c.fk_submission_id = ?
 		)
 		SELECT (
 				SELECT name
@@ -266,8 +269,7 @@ func getBotAction(dbs DBSession, sid int64) (result *string, err error) {
 				WHERE action.id = ranked_comment.fk_action_id
 			) AS action
 		FROM ranked_comment
-		WHERE rn = 1
-		AND fk_submission_id = ?`,
+		WHERE rn = 1`,
 		sid)
 
 	err = row.Scan(&result)
