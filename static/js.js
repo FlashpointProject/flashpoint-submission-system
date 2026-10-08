@@ -693,7 +693,7 @@ async function selectReason(message, showRedirect, options, cb) {
     }
 
     const confirmButton = createElem('button', ['pure-button', 'pure-button-primary', 'button-approve'], 'Confirm');
-    const cancelButton = createElem('button', ['pure-button', 'pure-button-primary', 'button-delete'], 'Cancel');
+    const cancelButton = createElem('button', ['pure-button', 'pure-button-primary', 'button-cancel'], 'Cancel');
     const buttonBox = createElem('div', ['message-box-buttons']);
     buttonBox.append(confirmButton, cancelButton);
     messageBox.appendChild(buttonBox);
@@ -729,7 +729,7 @@ function parseDiff(diff) {
 
 function createEmptyDiffValue() {
     const empty = document.createElement('span');
-    empty.style.color = '#999';
+    empty.style.color = '#999999';
     empty.style.fontStyle = 'italic';
     empty.textContent = '(empty)';
     return empty;
