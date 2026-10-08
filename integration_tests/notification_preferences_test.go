@@ -145,6 +145,35 @@ func TestNotificationPreferences_ProfileVisibilityAndAuth(t *testing.T) {
 	require.ElementsMatch(t, []string{constants.ActionComment}, getStoredNotificationActions(t, ctx, db, inAudit.ID))
 }
 
+func TestNotificationPreferences_MetadataEdit(t *testing.T) {
+	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
+	defer maria.Close()
+	defer postgres.Close()
+	ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)
+
+	for i, roles := range [][]int64{{roleIDTester}, {roleIDTrialCurator}, nil} {
+		user := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000741+i), roles, fmt.Sprintf("metadata-watcher-%d", i))
+		for _, enabled := range []bool{true, false, true} {
+			actions := []string{constants.ActionComment}
+			if enabled {
+				actions = append(actions, constants.ActionEditMeta)
+			}
+			rr := updateNotificationSettingsRequest(t, l, app, user.Cookie, actions)
+			require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+			require.ElementsMatch(t, actions, getStoredNotificationActions(t, ctx, db, user.ID))
+
+			profile := getWithCookie(t, l, app, user.Cookie, "/web/profile")
+			requireProfileLabels(t, profile, []string{"Metadata edit", `value="edit-meta"`}, true)
+			const checkedMetadataEdit = `<input[^>]*value="edit-meta"\s+checked`
+			if enabled {
+				require.Regexp(t, checkedMetadataEdit, profile.Body.String())
+			} else {
+				require.NotRegexp(t, checkedMetadataEdit, profile.Body.String())
+			}
+		}
+	}
+}
+
 func TestNotificationPreferences_QueueRows(t *testing.T) {
 	app, l, ctx, db, pgdb, maria, postgres := setupIntegrationTest(t)
 	defer maria.Close()
