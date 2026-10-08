@@ -1,66 +1,85 @@
+:root {
+    /* Loaded and removed with the dark-theme stylesheet. */
+    --dark-page-background: #202020;
+    --dark-text-default: #eeeeee;
+    --dark-legend-text: #dddddd;
+    --dark-text-muted: #bbbbbb;
+    --dark-button-primary: #2c669d;
+    --dark-link: #b0e0e6;
+    --dark-link-visited: #d2b48c;
+    --dark-table-border: #5a5a5a;
+    --dark-table-stripe: #323232;
+    --dark-input-background: #252525;
+    --dark-menu-hover: #5a5a5a;
+    --dark-drop-border: #eeeeee;
+    --dark-reject-border: #cccccc;
+    --dark-tag-hover: #000000;
+    --dark-message-box-background: #5a5a5a;
+}
+
 body, .pure-menu-children {
-    background-color: #202020 !important;
+    background-color: var(--dark-page-background) !important;
 }
 
 body, h1, .pure-menu-children, .pure-table thead, label, table, div, .default-comment, .pure-menu-link, textarea, input {
-    color: #eee !important;
+    color: var(--dark-text-default) !important;
 }
 
 .pure-form legend {
-    color: #ddd;
+    color: var(--dark-legend-text);
 }
 
 i {
-    color: #bbb;
+    color: var(--dark-text-muted);
 }
 
 .pure-button-primary, .pure-button-selected, a.pure-button-primary, a.pure-button-selected {
-    background-color: #2c669d;
+    background-color: var(--dark-button-primary);
 }
 
 td a:link {
-    color: powderblue;
+    color: var(--dark-link);
 }
 td a:visited {
-    color: tan !important;
+    color: var(--dark-link-visited) !important;
 }
 .pure-table, .comment, .pure-table td, .pure-table th {
-    border-color: #5a5a5a !important;
+    border-color: var(--dark-table-border) !important;
 }
 
 .pure-table-striped tr:nth-child(2n-1) td {
-    background-color: #323232;
+    background-color: var(--dark-table-stripe);
 }
 
 .pure-table thead, .pure-menu-children, textarea, input {
-    background-color: #252525 !important;
+    background-color: var(--dark-input-background) !important;
 }
 
 .pure-menu-active>.pure-menu-link, .pure-menu-link:focus, .pure-menu-link:hover {
-    background-color: #5a5a5a;
+    background-color: var(--dark-menu-hover);
 }
 
 .submissions-table th, .submissions-table td, .pure-table-bordered td, .pure-form legend {
-    border-bottom: 1px solid #5a5a5a !important;
+    border-bottom: 1px solid var(--dark-table-border) !important;
 }
 
 #resumable-drop {
-    border: 1px solid #eee !important;
+    border: 1px solid var(--dark-drop-border) !important;
 }
 
 input[type=text], textarea{
     border: none !important;
 }
 .button-reject {
-    border: 1px solid #ccc;
+    border: 1px solid var(--dark-reject-border);
 }
 
 .tag-box:hover {
-    background-color: black;
+    background-color: var(--dark-tag-hover);
 }
 
 .message-box {
-    background-color: #5a5a5a;
+    background-color: var(--dark-message-box-background);
 }
 
 .submission-type-icon {

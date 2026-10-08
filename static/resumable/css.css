@@ -1,8 +1,14 @@
+:root {
+    --drop-border: #000000;
+    --drop-idle-background: rgba(0, 0, 0, 0.1);
+    --drop-idle-text: rgba(0, 0, 0, 0.2);
+}
+
 #resumable-drop {
     width: 100%;
     height: 150px;
     line-height: 150px;
-    border: 1px solid black;
+    border: 1px solid var(--drop-border);
     display: inline-block;
     text-align: center;
     font-size: 40px;
@@ -15,16 +21,6 @@
 }
 
 .gray-drop {
-    background: rgba(0, 0, 0, 0.1);
-    color: rgba(0, 0, 0, 0.2);
-}
-
-.blue-drop {
-    background: rgba(0, 0, 255, 0.4);
-    color: rgba(0, 0, 255, 0.6);
-}
-
-.sunflower-drop {
-    background: rgba(255, 234, 0, 0.4);
-    color: rgba(255, 196, 0, 0.6);
+    background: var(--drop-idle-background);
+    color: var(--drop-idle-text);
 }
