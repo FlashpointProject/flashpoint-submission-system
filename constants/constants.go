@@ -71,6 +71,7 @@ func GetProfileNotificationActions() []string {
 		ActionRequestChanges,
 		ActionMarkAdded,
 		ActionUpload,
+		ActionEditMeta,
 		ActionReject,
 	}
 }
