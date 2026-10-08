@@ -28,27 +28,26 @@ func (a *App) RenderTemplates(ctx context.Context, w http.ResponseWriter, r *htt
 	templates = append(templates, filenames...)
 
 	t := template.New("base").Funcs(sprig.FuncMap()).Funcs(template.FuncMap{
-		"boolString":                    BoolString,
-		"unpointify":                    utils.Unpointify,
-		"isStaff":                       constants.IsStaff,
-		"isTrialCurator":                constants.IsTrialCurator,
-		"isDeleter":                     constants.IsDeleter,
-		"isFreezer":                     constants.IsFreezer,
-		"isDecider":                     constants.IsDecider,
-		"isAdder":                       constants.IsAdder,
-		"isInAudit":                     constants.IsInAudit,
-		"isGod":                         constants.IsGod,
-		"sizeToString":                  utils.SizeToString,
-		"splitMultilineText":            utils.SplitMultilineText,
-		"capitalizeAscii":               utils.CapitalizeASCII,
-		"parseMetaTags":                 parseMetaTags,
-		"submissionsShowPreviousButton": submissionsShowPreviousButton,
-		"submissionsShowNextButton":     submissionsShowNextButton,
-		"capString":                     capString,
-		"er":                            equalReference,
-		"ner":                           notEqualReference,
-		"msTime":                        milliTime,
-		"localeNum":                     localeNum,
+		"boolString":            BoolString,
+		"unpointify":            utils.Unpointify,
+		"isStaff":               constants.IsStaff,
+		"isTrialCurator":        constants.IsTrialCurator,
+		"isDeleter":             constants.IsDeleter,
+		"isFreezer":             constants.IsFreezer,
+		"isDecider":             constants.IsDecider,
+		"isAdder":               constants.IsAdder,
+		"isInAudit":             constants.IsInAudit,
+		"isGod":                 constants.IsGod,
+		"sizeToString":          utils.SizeToString,
+		"splitMultilineText":    utils.SplitMultilineText,
+		"capitalizeAscii":       utils.CapitalizeASCII,
+		"parseMetaTags":         parseMetaTags,
+		"submissionsPagination": submissionsPagination,
+		"capString":             capString,
+		"er":                    equalReference,
+		"ner":                   notEqualReference,
+		"msTime":                milliTime,
+		"localeNum":             localeNum,
 	})
 
 	parse := func() (interface{}, error) {
@@ -238,17 +237,24 @@ func parseMetaTags(rawTags string, tagList []types.Tag) []types.Tag {
 	return result
 }
 
-func submissionsShowPreviousButton(page *int64) bool {
-	return !(page == nil || *page < 2)
+type submissionPagination struct {
+	Page       int64
+	TotalPages int64
 }
 
-// TODO doesn't work correctly when the total number of results is divisible by perPage
-func submissionsShowNextButton(submissionCount int, perPage *int64) bool {
-	var currentPerPage int64 = 100
-	if perPage != nil {
-		currentPerPage = *perPage
+func submissionsPagination(totalCount int64, filter types.SubmissionsFilter) submissionPagination {
+	pagination := submissionPagination{Page: 1, TotalPages: 1}
+	if filter.Page != nil && *filter.Page > 0 {
+		pagination.Page = *filter.Page
 	}
-	return (int64)(submissionCount) == currentPerPage
+	perPage := int64(100)
+	if filter.ResultsPerPage != nil && *filter.ResultsPerPage > 0 {
+		perPage = *filter.ResultsPerPage
+	}
+	if totalCount > 0 {
+		pagination.TotalPages = 1 + (totalCount-1)/perPage
+	}
+	return pagination
 }
 
 func capString(maxLen int, s *string) string {

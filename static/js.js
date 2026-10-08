@@ -165,7 +165,17 @@ function changePage(number) {
         }
     }
 
-    url.searchParams.set("page", newPage.toString())
+    goToPage(newPage)
+}
+
+function goToPage(page) {
+    const pageNumber = Number(page)
+    if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) {
+        return
+    }
+
+    const url = new URL(window.location.href)
+    url.searchParams.set("page", pageNumber.toString())
     window.location.href = url
 }
 
