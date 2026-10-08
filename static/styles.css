@@ -512,6 +512,32 @@ textarea {
     margin: 1em 0;
     width: 100%;
     text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5em;
+}
+
+.submission-page-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}
+
+.submission-page-selector label {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.submission-page-selector input[type="number"] {
+    display: inline-block;
+    width: 5em;
+    margin: 0 0 0 0.25em;
+}
+
+.submission-pagenav .pure-button {
+    margin: 0;
 }
 
 progress[value] {

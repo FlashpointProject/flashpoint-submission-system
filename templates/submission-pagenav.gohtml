@@ -1,13 +1,23 @@
 {{define "submission-pagenav"}}
+    {{$pagination := submissionsPagination .TotalCount .Filter}}
     <div class="submission-pagenav">
-        {{if submissionsShowPreviousButton .Filter.Page}}
-            <button class="pure-button pure-button-primary"
+        {{if gt $pagination.Page 1}}
+            <button type="button" class="pure-button pure-button-primary"
                     onclick="changePage(-1)">
                 Previous page
             </button>
         {{end}}
-        {{if submissionsShowNextButton (len .Submissions) .Filter.ResultsPerPage}}
-            <button class="pure-button pure-button-primary"
+        <form class="pure-form submission-page-selector" onsubmit="goToPage(this.elements.page.value); return false">
+            <label>
+                Page
+                <input type="number" name="page" min="1" max="{{$pagination.TotalPages}}"
+                       step="1" value="{{$pagination.Page}}" required aria-label="Page number">
+            </label>
+            <span>of {{$pagination.TotalPages}}</span>
+            <button type="submit" class="pure-button pure-button-primary">Go</button>
+        </form>
+        {{if lt $pagination.Page $pagination.TotalPages}}
+            <button type="button" class="pure-button pure-button-primary"
                     onclick="changePage(+1)">
                 Next page
             </button>
