@@ -475,7 +475,7 @@
             {{template "submission-filter-additional-meta" .}}
             <div class="right">
                 <button type="button" class="pure-button pure-button-primary" id="switch-filter-button"
-                        data-filter-layout-switch onclick="switchFilterLayout('simple')">Switch to simple mode
+                        data-filter-layout-switch onclick="switchFilterLayout('simple')">Switch to basic mode
                 </button>
                 <button type="button" class="pure-button pure-button-primary" id="reset-button"
                         onclick="resetFilterForm()">Reset
@@ -488,6 +488,7 @@
     </div>
 
     <script>
+        initializeFilterLayout()
         let radios = document.getElementsByTagName('input');
         for (i = 0; i < radios.length; i++) {
             radios[i].onclick = function (e) {

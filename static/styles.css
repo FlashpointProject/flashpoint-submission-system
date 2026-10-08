@@ -455,6 +455,10 @@ textarea {
     text-shadow: 0 1px 1px var(--test-instance-text-shadow);
 }
 
+[data-filter-layout-switch] {
+    min-width: 16em;
+}
+
 .submission-filter-wrapper {
     padding: 1em;
     border: 1px solid var(--border-container);
@@ -800,6 +804,10 @@ video {
     margin: 0.5rem;
     padding: 0.5rem;
     border: 1px solid;
+}
+
+.sessions:not(.reveal-session-ips) .session-ip {
+    filter: blur(5px);
 }
 
 .client-app-field-name,
