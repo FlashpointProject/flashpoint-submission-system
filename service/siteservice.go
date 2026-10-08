@@ -1063,6 +1063,17 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 	if err != nil {
 		return nil, err
 	}
+	// The latest file's uploader is distinct from both the original submitter
+	// and the last activity author. Resolve it through the user cache so profile
+	// changes do not leave the file summary with a stale username.
+	var currentFileUploader string
+	if len(snapshot.Submissions) > 0 && snapshot.Submissions[0].LastUploaderID != 0 {
+		uploader, err := s.GetDiscordUser(ctx, snapshot.Submissions[0].LastUploaderID)
+		if err != nil {
+			return nil, err
+		}
+		currentFileUploader = uploader.Username
+	}
 	// External enrichment is deliberately outside the submission snapshot.
 	tags, _ := s.validator.GetTags(ctx)
 	// Match the template's case/whitespace normalization, but only expose this
@@ -1083,6 +1094,7 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 	}
 	return &types.ViewSubmissionPageData{
 		SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
+		CurrentFileUploader: currentFileUploader,
 		CurationMeta:        snapshot.Meta, Comments: snapshot.Comments, CurationImageIDs: snapshot.ImageIDs,
 		IsUserSubscribed: subscribed, TagList: submissionTags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
 	}, nil

@@ -33,6 +33,7 @@ function initResumableUploader(target, maxFiles, allowedExtensions, pollStatus) 
         document.getElementById("content-resumable").hidden = false
     } else {
         document.getElementById("content-legacy").hidden = false
+        return
     }
 
     r.assignBrowse(document.getElementById("resumable-drop"));

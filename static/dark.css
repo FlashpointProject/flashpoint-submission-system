@@ -15,6 +15,8 @@
     --dark-reject-border: #cccccc;
     --dark-tag-hover: #000000;
     --dark-message-box-background: #5a5a5a;
+    --submission-file-background: var(--dark-input-background);
+    --submission-detail-muted: var(--dark-text-muted);
 }
 
 body, .pure-menu-children {
@@ -84,4 +86,13 @@ input[type=text], textarea{
 
 .submission-type-icon {
     filter: invert(100%) sepia(0%) saturate(7497%) hue-rotate(130deg) brightness(98%) contrast(106%);
+}
+
+.submission-current-file,
+.submission-tools {
+    border-color: var(--dark-table-border);
+}
+
+.submission-current-file-summary {
+    color: var(--submission-detail-muted) !important;
 }

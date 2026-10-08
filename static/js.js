@@ -848,3 +848,14 @@ function getGameImageDiv(pathname) {
     elem.src = url;
     return elem;
 }
+
+// Closing the panel only changes its visibility; queued or running uploads keep
+// their existing state. Start, Pause and Cancel retain their uploader handlers.
+function showSubmissionUploader(show) {
+    const panel = document.getElementById("submission-upload-panel")
+    const toggle = document.getElementById("submission-upload-toggle")
+    if (!panel || !toggle) return
+    panel.hidden = !show
+    toggle.setAttribute("aria-expanded", String(show))
+    if (!show) toggle.focus()
+}
