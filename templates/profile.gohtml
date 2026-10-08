@@ -88,6 +88,11 @@
         <form class="pure-form pure-form-stacked" id="local-settings-form">
             <label for="site-max-width">Max site width</label>
             <input type="text" maxlength="5" id="site-max-width">
+            <label for="default-filter-layout">Default search filter mode</label>
+            <select id="default-filter-layout">
+                <option value="simple">Basic</option>
+                <option value="advanced">Advanced</option>
+            </select>
             <button type="button" onclick="updateLocalSettings()" class="pure-button pure-button-primary">
                 Update
             </button>
@@ -97,7 +102,9 @@
 
         <h3>Sessions</h3>
 
-        <div class="sessions">
+        <button type="button" class="pure-button pure-button-primary" aria-controls="profile-sessions"
+                aria-pressed="false" onclick="toggleSessionIPs(this)">Show IP addresses</button>
+        <div class="sessions" id="profile-sessions">
             Fetching Sessions...
         </div>
 
@@ -210,7 +217,7 @@
                             </tr>
                             <tr>
                                 <td class="session-field-name">IP</th>
-                                <td>${session.ip_addr}</td>
+                                <td><span class="session-ip">${session.ip_addr}</span></td>
                             </tr>
                             <tr>
                                 <td class="session-field-name">Scope</th>
@@ -243,6 +250,7 @@
             }
             document.getElementById("site-max-width").placeholder = maxWidth
             document.getElementById("site-max-width").value = ""
+            document.getElementById("default-filter-layout").value = getDefaultFilterLayout()
         </script>
 
     </div>

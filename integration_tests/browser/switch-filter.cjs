@@ -10,6 +10,8 @@ const dom = new JSDOM(html, {
     url: 'http://localhost/web/my-submissions?title-partial=applied&bot-action=approve&bot-action=request-changes&page=3#results'
 });
 const { window } = dom;
+// jsdom has no layout/scroll implementation; real-browser checks cover positioning.
+window.scrollBy = () => {};
 window.eval(script);
 window.history.replaceState({ marker: 'preserved' }, '', window.location.href);
 const historyLength = window.history.length;

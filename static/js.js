@@ -435,6 +435,23 @@ function filterIHaveRequestedChangesVerification() {
     submitAdvancedFilterForm()
 }
 
+function getDefaultFilterLayout() {
+    try {
+        return localStorage.getItem("default-filter-layout") === "advanced" ? "advanced" : "simple"
+    } catch {
+        return "simple"
+    }
+}
+
+function initializeFilterLayout() {
+    const requested = new URLSearchParams(window.location.search).get("filter-layout")
+    const layout = requested === "simple" || requested === "advanced" ? requested : getDefaultFilterLayout()
+    for (const mode of ["simple", "advanced"]) {
+        const form = document.getElementById(`filter-form-${mode}`)
+        if (form) form.hidden = mode !== layout
+    }
+}
+
 function switchFilterLayout(newLayout) {
     if (newLayout !== "simple" && newLayout !== "advanced") {
         return
@@ -444,6 +461,7 @@ function switchFilterLayout(newLayout) {
     if (!source || !target || !target.hidden) {
         return
     }
+    const previousButtonTop = source.querySelector("[data-filter-layout-switch]").getBoundingClientRect().top
 
     // Both forms are already rendered. Transfer shared controls, including
     // cleared values, while keeping advanced-only edits in the advanced form.
@@ -465,10 +483,22 @@ function switchFilterLayout(newLayout) {
     const url = new URL(window.location.href)
     url.searchParams.set("filter-layout", newLayout)
     window.history.replaceState(window.history.state, "", url)
-    target.querySelector("[data-filter-layout-switch]").focus({preventScroll: true})
+    const button = target.querySelector("[data-filter-layout-switch]")
+    button.focus({preventScroll: true})
+    const bounds = button.getBoundingClientRect()
+    const desiredTop = Math.max(0, Math.min(previousButtonTop, window.innerHeight - bounds.height))
+    // Measure after the layout change, including any scroll clamping on collapse.
+    window.scrollBy({top: bounds.top - desiredTop, behavior: "instant"})
+}
+
+function toggleSessionIPs(button) {
+    const revealed = document.getElementById("profile-sessions").classList.toggle("reveal-session-ips")
+    button.setAttribute("aria-pressed", String(revealed))
+    button.textContent = revealed ? "Hide IP addresses" : "Show IP addresses"
 }
 
 function updateLocalSettings() {
+    localStorage.setItem("default-filter-layout", document.getElementById("default-filter-layout").value)
     const maxWidthInput = document.getElementById("site-max-width")
     let parsed = parseInt(maxWidthInput.value, 10)
     if (isNaN(parsed)) {
