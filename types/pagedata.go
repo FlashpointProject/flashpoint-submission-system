@@ -115,6 +115,7 @@ type EditSubmissionPageData struct {
 
 type ViewSubmissionPageData struct {
 	SubmissionsPageData
+	CurrentFileUploader  string
 	CurationMeta         *CurationMeta
 	Comments             []*ExtendedComment
 	IsUserSubscribed     bool

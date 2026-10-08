@@ -23,13 +23,14 @@
             {{end}}
         }
     </script>
-    <div class="content">
+    <div class="content submission-detail">
         {{if .CurationMeta.Title}}
             <script>document.title = "{{.CurationMeta.Title}}" + " | FPFSS";</script>
         {{end}}
-        <h1>View Submission{{if .CurationMeta.GameExists}} (Content Patch){{end}}</h1>
-
-        {{template "view-submission-nav" .}}
+        <header class="submission-header">
+            <h1>View Submission{{if .CurationMeta.GameExists}} (Content Patch){{end}}</h1>
+            {{template "view-submission-nav" .}}
+        </header>
 
 
         <h3>Table data</h3>
@@ -40,101 +41,100 @@
         {{end}}
 
         {{if or (not $isFrozen) ($canFreeze)}}
-            <div class="pure-g">
-                <div class="pure-u-1-2">
-                    <h3>Download submission</h3>
-                    <a class="pure-button pure-button-primary"
-                       href="/data/submission/{{(index .Submissions 0).SubmissionID}}/file/{{(index .Submissions 0).FileID}}">
-                        Download latest version
-                    </a>
-                    <a class="pure-button pure-button-primary"
-                       href="flashpoint://fpfss/open_curation/data/submission/{{(index .Submissions 0).SubmissionID}}/file/{{(index .Submissions 0).FileID}}">
-                        Open in Flashpoint Launcher
-                    </a>
-
-                    {{if gt (index .Submissions 0).FileCount 1}}
-                        <a class="pure-button pure-button-primary"
-                           href="/web/submission/{{(index .Submissions 0).SubmissionID}}/files">
-                            Browse submission versions
-                        </a>
-                    {{end}}
-
-                    <br>
-
-                    {{if not (has "mark-added" (index .Submissions 0).DistinctActions)}}
-                        {{if $UserCanModify}}
-                            <h3>Edit Submission</h3>
-                            <a class="pure-button pure-button-primary"
-                            href="/web/submission/{{(index .Submissions 0).SubmissionID}}/metaedit">
-                                Edit Metadata on FPFSS
-                            </a>
-                            <br>
-                        {{end}}
-                    {{end}}
-
-                    {{if and (and (not .CurationMeta.GameExists) ($canFreeze)) (not $isMarkAdded)}}
-                        {{if $isFrozen}}
-                            <h3>Unfreeze submission</h3>
-                            <button class="pure-button button-freeze"
-                                    onclick="unfreezeSubmission({{$submissionID}})">Unfreeze
-                            </button>
-                        {{else}}
-                            <h3>Freeze submission</h3>
-                            <button class="pure-button button-freeze"
-                                    onclick="freezeSubmission({{$submissionID}})">Freeze
-                            </button>
-                        {{end}}
-                    {{end}}
-                </div>
-                {{if and $UserCanModify (not $isMarkAdded)}}
-                    <div class="pure-u-1-2">
-                        <div id="content-resumable" hidden>
-                            <h3>Upload a fixed version</h3>
-                            <div id="resumable-drop" class="gray-drop">
-                                <span>Click or drag files here</span>
-                            </div>
-                            <br><br>
-                            <input type="button" class="pure-button pure-button button-upload-file" value="Start"
-                                   onclick="startUpload()">
-                            <input type="button" class="pure-button pure-button button-pause" value="Pause"
-                                   onclick="pauseUpload()">
-                            <input type="button" class="pure-button pure-button button-cancel" value="Cancel"
-                                   onclick="cancelUpload()">
-                            <br><br>
-                            <div id="progress-bars-container-resumable"></div>
-                        </div>
-
-                        <link rel="stylesheet" href="/static/resumable/css.css">
-                        <script src="/static/resumable/resumable.js"></script>
-                        <script src="/static/resumable/uploader.js"></script>
-                        <script>initResumableUploader("/api/submission-receiver-resumable/{{$submissionID}}", 1, [".7z", ".zip"], true)</script>
+            {{$submission := index .Submissions 0}}
+            {{$canUpdate := and $UserCanModify (not $isMarkAdded)}}
+            {{$canFreezeSubmission := and (not .CurationMeta.GameExists) $canFreeze (not $isMarkAdded)}}
+            {{$canAdminister := and (not $isMarkAdded) (or $canFreezeSubmission $canDelete (isStaff .UserRoles))}}
+            <section class="submission-current-file" aria-label="Current submission file">
+                <div class="submission-current-file-details">
+                    <strong>{{ $submission.OriginalFilename }}</strong>
+                    <div class="submission-current-file-summary">
+                        Current file · {{sizeToString $submission.Size}}{{if .CurrentFileUploader}} · uploaded by {{.CurrentFileUploader}}{{end}}
                     </div>
-                {{end}}
-            </div>
-        {{end}}
-
-        {{if and (or (not $isFrozen) ($canFreeze)) (not $isMarkAdded)}}
-            <div class="pure-g">
-                <div class="pure-u-1-2">
-
-                    {{if $canDelete}}
-                        <h3>Delete submission and all its related data</h3>
-                        <button class="pure-button button-delete"
-                                onclick="deleteSubmission({{$submissionID}})">Delete
-                        </button>
+                </div>
+                <div class="submission-actions">
+                    <a class="pure-button pure-button-primary"
+                       href="/data/submission/{{$submissionID}}/file/{{$submission.FileID}}">Download</a>
+                    <a class="pure-button pure-button-primary"
+                       href="flashpoint://fpfss/open_curation/data/submission/{{$submissionID}}/file/{{$submission.FileID}}">Open in Flashpoint Launcher</a>
+                    {{if gt $submission.FileCount 1}}
+                        <a class="pure-button pure-button-primary"
+                           href="/web/submission/{{$submissionID}}/files">View older uploads</a>
                     {{end}}
                 </div>
-                <div class="pure-u-1-2">
+            </section>
 
-                    {{if isStaff .UserRoles}}
-                        <h3>Override Bot</h3>
-                        <button class="pure-button button-override"
-                                onclick="overrideBot({{$submissionID}})">Override
-                        </button>
+            {{if or $canUpdate $canAdminister}}
+                <div class="submission-tools">
+                    {{if $canUpdate}}
+                        <section aria-labelledby="submission-update-heading">
+                            <h3 id="submission-update-heading">Update submission</h3>
+                            <div class="submission-actions">
+                                <a class="pure-button pure-button-primary"
+                                   href="/web/submission/{{$submissionID}}/metaedit">Edit metadata</a>
+                                <button type="button" class="pure-button pure-button-primary"
+                                        id="submission-upload-toggle" aria-expanded="false"
+                                        aria-controls="submission-upload-panel"
+                                        onclick="showSubmissionUploader(true)">Upload a fixed version</button>
+                            </div>
+                        </section>
                     {{end}}
-
+                    {{if $canAdminister}}
+                        <section aria-labelledby="submission-admin-heading">
+                            <h3 id="submission-admin-heading">Administrative actions</h3>
+                            <div class="submission-actions">
+                                {{if $canFreezeSubmission}}
+                                    {{if $isFrozen}}
+                                        <button type="button" class="pure-button button-freeze"
+                                                onclick="unfreezeSubmission({{$submissionID}})">Unfreeze</button>
+                                    {{else}}
+                                        <button type="button" class="pure-button button-freeze"
+                                                onclick="freezeSubmission({{$submissionID}})">Freeze</button>
+                                    {{end}}
+                                {{end}}
+                                {{if isStaff .UserRoles}}
+                                    <button type="button" class="pure-button button-override"
+                                            onclick="overrideBot({{$submissionID}})">Override Bot</button>
+                                {{end}}
+                                {{if $canDelete}}
+                                    <button type="button" class="pure-button button-delete"
+                                            onclick="deleteSubmission({{$submissionID}})">Delete submission</button>
+                                {{end}}
+                            </div>
+                        </section>
+                    {{end}}
                 </div>
-            </div>
+            {{end}}
+
+            {{if $canUpdate}}
+                <section id="submission-upload-panel" class="submission-upload-panel" hidden
+                         aria-labelledby="submission-upload-heading">
+                    <div class="submission-upload-heading">
+                        <h3 id="submission-upload-heading">Upload a fixed version</h3>
+                        <button type="button" class="pure-button"
+                                onclick="showSubmissionUploader(false)">Close</button>
+                    </div>
+                    <div id="content-resumable" hidden>
+                        <div id="resumable-drop" class="gray-drop">
+                            <span>Click or drag files here</span>
+                        </div>
+                        <div class="submission-actions submission-upload-controls">
+                            <input type="button" class="pure-button button-upload-file" value="Start"
+                                   onclick="startUpload()">
+                            <input type="button" class="pure-button button-pause" value="Pause"
+                                   onclick="pauseUpload()">
+                            <input type="button" class="pure-button button-cancel" value="Cancel"
+                                   onclick="cancelUpload()">
+                        </div>
+                        <div id="progress-bars-container-resumable"></div>
+                    </div>
+                    <div id="content-legacy" hidden>Your browser does not support resumable uploads. Please use a current browser.</div>
+                </section>
+                <link rel="stylesheet" href="/static/resumable/css.css">
+                <script src="/static/resumable/resumable.js"></script>
+                <script src="/static/resumable/uploader.js"></script>
+                <script>initResumableUploader("/api/submission-receiver-resumable/{{$submissionID}}", 1, [".7z", ".zip"], true)</script>
+            {{end}}
         {{end}}
 
         {{if or (not $isFrozen) ($canFreeze)}}

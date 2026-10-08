@@ -32,6 +32,8 @@
     --action-text-shadow: rgba(0, 0, 0, 0.5);
     --test-instance-text-shadow: #000000;
     --text-muted: #888888;
+    --submission-file-background: #f5f5f5;
+    --submission-detail-muted: #666666;
     --image-border: #000000;
     --rule-border: #000000;
     --video-background: rgba(0, 0, 0, 0);
@@ -831,4 +833,128 @@ video {
 .diff-tagged-removed,
 .diff-tagged-added {
     margin-top: 0.8rem;
+}
+
+/* Submission detail actions use the existing Pure/action button styles. */
+.submission-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin: 1em 0 1.5em;
+}
+
+.submission-header h1 {
+    margin: 0;
+}
+
+.submission-header .submission-pagenav {
+    width: auto;
+    max-width: 100%;
+    margin: 0 0 0 auto;
+    justify-content: flex-end;
+}
+
+.submission-current-file {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin: 1.5em 0;
+    padding: 1em;
+    border: 1px solid var(--border-table);
+    background: var(--submission-file-background);
+}
+
+.submission-current-file-details {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.submission-current-file-summary {
+    margin-top: 0.3em;
+    font-size: 90%;
+    color: var(--submission-detail-muted);
+}
+
+.submission-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4em;
+}
+
+.submission-actions .pure-button {
+    margin: 0;
+    max-width: 100%;
+    white-space: normal;
+}
+
+.submission-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5em;
+    padding-bottom: 1.5em;
+    margin-bottom: 1.5em;
+    border-bottom: 1px solid var(--border-table);
+}
+
+.submission-tools > section {
+    flex: 1 1 22em;
+    min-width: 0;
+}
+
+.submission-tools h3,
+.submission-upload-heading h3 {
+    margin: 0 0 0.75em;
+}
+
+.submission-upload-panel {
+    max-width: 680px;
+    margin-bottom: 1.5em;
+}
+
+.submission-upload-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em;
+    margin-bottom: 1em;
+}
+
+.submission-upload-heading h3 {
+    margin: 0;
+}
+
+.submission-upload-controls {
+    margin-top: 1em;
+}
+
+.submission-upload-panel #resumable-drop {
+    box-sizing: border-box;
+    height: auto;
+    min-height: 150px;
+    line-height: 1.25;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1em;
+    font-size: clamp(1.5em, 3vw, 2em);
+}
+
+.submission-detail #submission-images {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1.5em;
+    margin: 1em 0 1.5em;
+}
+
+.submission-detail .curation-image {
+    box-sizing: border-box;
+    margin: 0;
+    max-width: min(400px, 100%);
+    height: auto;
+    object-fit: contain;
 }

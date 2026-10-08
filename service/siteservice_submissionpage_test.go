@@ -126,3 +126,45 @@ func TestSubmissionPageTagListContainsOnlySubmissionTags(t *testing.T) {
 		})
 	}
 }
+
+// The file summary must not use either the original owner or latest commenter.
+type submissionUploaderDAL struct {
+	database.DAL
+	username  string
+	requested []int64
+}
+
+func (d *submissionUploaderDAL) NewSession(context.Context) (database.DBSession, error) {
+	return submissionPageSession{}, nil
+}
+func (d *submissionUploaderDAL) GetDiscordUser(_ database.DBSession, uid int64) (*types.DiscordUser, error) {
+	d.requested = append(d.requested, uid)
+	return &types.DiscordUser{ID: uid, Username: d.username}, nil
+}
+func TestSubmissionPageCurrentFileUploaderAndProfileRefresh(t *testing.T) {
+	ctx := context.Background()
+	dal := &submissionUploaderDAL{username: "Current uploader"}
+	s := &SiteService{dal: dal, validator: submissionTagValidator{}}
+	_, err := s.readCaches().submissions.Get(ctx, "42", func(context.Context) (appcache.Snapshot[submissionSnapshot], error) {
+		return appcache.Snapshot[submissionSnapshot]{Value: submissionSnapshot{Submissions: []*types.ExtendedSubmission{{SubmissionID: 42, SubmitterID: 1, UpdaterID: 3, LastUploaderID: 2}}}}, nil
+	})
+	require.NoError(t, err)
+	_, err = s.readCaches().subscriptions.Get(ctx, subscriptionKey(0, 42), func(context.Context) (appcache.Snapshot[bool], error) { return appcache.Snapshot[bool]{}, nil })
+	require.NoError(t, err)
+	_, err = s.readCaches().navigation.Get(ctx, "42", func(context.Context) (appcache.Snapshot[submissionNavigation], error) {
+		return appcache.Snapshot[submissionNavigation]{}, nil
+	})
+	require.NoError(t, err)
+	for range 2 {
+		page, err := s.GetViewSubmissionPageData(ctx, 0, 42)
+		require.NoError(t, err)
+		require.Equal(t, "Current uploader", page.CurrentFileUploader)
+	}
+	require.Equal(t, []int64{2}, dal.requested, "uploader lookup should use the existing user cache")
+	dal.username = "Renamed uploader"
+	require.NoError(t, s.cacheCoordinator.Commit([]appcache.Dependency{appcache.Key("user", 2)}, func() error { return nil }))
+	page, err := s.GetViewSubmissionPageData(ctx, 0, 42)
+	require.NoError(t, err)
+	require.Equal(t, "Renamed uploader", page.CurrentFileUploader)
+	require.Equal(t, []int64{2, 2}, dal.requested)
+}
