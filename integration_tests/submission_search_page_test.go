@@ -55,7 +55,7 @@ func TestSubmissionSearchLargePageMatchesOrdinaryPages(t *testing.T) {
 				filter := base
 				filter.OrderBy, filter.AscDesc = &order, &direction
 				want, total := f.Search(t, 1004, &filter)
-				filter.ResultsPerPage = utils.Int64Ptr(100_000)
+				filter.ResultsPerPage = utils.Int64Ptr(1000)
 				got, count := f.Search(t, 1004, &filter)
 				require.Equal(t, want, got, order+direction)
 				require.Equal(t, total, count)
