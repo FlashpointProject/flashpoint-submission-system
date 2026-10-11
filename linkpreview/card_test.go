@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/image/font"
 )
 
 func TestSubmissionCardPublicFieldsAndStates(t *testing.T) {
@@ -69,6 +70,17 @@ func TestPNGLayoutBoundsAndColors(t *testing.T) {
 			require.Equal(t, hex("#13842d"), color.RGBAModel.Convert(im.At((padding+3*tableWidth/8+5)*scale, (l.headerBottom+5)*scale)))
 		}
 		f.close()
+	}
+}
+
+func TestFallbackFontsCoverCJK(t *testing.T) {
+	f := newFonts()
+	defer f.close()
+	for _, face := range []font.Face{f.regular, f.bold, f.small, f.title} {
+		for _, r := range "Aж쿠키런太鼓の達人ドＷ『』〜" {
+			_, ok := face.GlyphAdvance(r)
+			require.True(t, ok, "missing glyph for %q", r)
+		}
 	}
 }
 

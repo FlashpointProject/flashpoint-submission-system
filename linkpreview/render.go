@@ -31,6 +31,18 @@ var regularTTF []byte
 var boldTTF []byte
 var regularFont = mustFont(regularTTF)
 var boldFont = mustFont(boldTTF)
+
+// Noto Sans CJK (OFL) covers kana, hangul, hanzi/kanji and fullwidth forms that
+// Liberation Sans lacks. The collection's first font is the Japanese variant,
+// the most common non-Latin script in curation titles.
+//
+//go:embed fonts/NotoSansCJK-Regular.ttc
+var cjkRegularTTC []byte
+
+//go:embed fonts/NotoSansCJK-Bold.ttc
+var cjkBoldTTC []byte
+var cjkRegularFont = mustCollectionFont(cjkRegularTTC)
+var cjkBoldFont = mustCollectionFont(cjkBoldTTC)
 var logo = func() image.Image {
 	im, err := png.Decode(bytes.NewReader(logoPNG))
 	if err != nil {
@@ -41,6 +53,18 @@ var logo = func() image.Image {
 
 func mustFont(b []byte) *opentype.Font {
 	f, err := opentype.Parse(b)
+	if err != nil {
+		panic(err)
+	}
+	return f
+}
+
+func mustCollectionFont(b []byte) *opentype.Font {
+	c, err := opentype.ParseCollection(b)
+	if err != nil {
+		panic(err)
+	}
+	f, err := c.Font(0)
 	if err != nil {
 		panic(err)
 	}
@@ -59,14 +83,20 @@ var border = color.RGBA{203, 203, 203, 255}
 type fonts struct{ regular, bold, small, title font.Face }
 
 func newFonts() fonts {
-	face := func(f *opentype.Font, size float64) font.Face {
-		v, err := opentype.NewFace(f, &opentype.FaceOptions{Size: size * scale, DPI: 72, Hinting: font.HintingFull})
-		if err != nil {
-			panic(err)
+	face := func(size float64, fs ...*opentype.Font) font.Face {
+		faces := fallbackFace{}
+		for _, f := range fs {
+			v, err := opentype.NewFace(f, &opentype.FaceOptions{Size: size * scale, DPI: 72, Hinting: font.HintingFull})
+			if err != nil {
+				panic(err)
+			}
+			faces = append(faces, v)
 		}
-		return v
+		return faces
 	}
-	return fonts{face(regularFont, 13), face(boldFont, 13), face(regularFont, 12), face(boldFont, 24)}
+	regular := []*opentype.Font{regularFont, cjkRegularFont}
+	bold := []*opentype.Font{boldFont, cjkBoldFont}
+	return fonts{face(13, regular...), face(13, bold...), face(12, regular...), face(24, bold...)}
 }
 func (f fonts) close() { f.regular.Close(); f.bold.Close(); f.small.Close(); f.title.Close() }
 
