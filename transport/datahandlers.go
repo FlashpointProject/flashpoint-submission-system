@@ -46,6 +46,8 @@ func (a *App) HandleGameImageFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleDownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
+	// Access can change on freeze or between viewers; never retain these responses.
+	w.Header().Set("Cache-Control", "private, no-store")
 	ctx := r.Context()
 	uid := utils.UserID(ctx)
 	params := mux.Vars(r)
@@ -86,6 +88,8 @@ func (a *App) HandleDownloadSubmissionFile(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *App) HandleDownloadSubmissionBatch(w http.ResponseWriter, r *http.Request) {
+	// Access can change on freeze or between viewers; never retain these responses.
+	w.Header().Set("Cache-Control", "private, no-store")
 	ctx := r.Context()
 	uid := utils.UserID(ctx)
 	params := mux.Vars(r)
@@ -131,6 +135,8 @@ func (a *App) HandleDownloadSubmissionBatch(w http.ResponseWriter, r *http.Reque
 }
 
 func (a *App) HandleDownloadCurationImage(w http.ResponseWriter, r *http.Request) {
+	// Access can change on freeze or between viewers; never retain these responses.
+	w.Header().Set("Cache-Control", "private, no-store")
 	ctx := r.Context()
 	params := mux.Vars(r)
 	curationImageID := params[constants.ResourceKeyCurationImageID]

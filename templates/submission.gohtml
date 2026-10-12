@@ -1,11 +1,11 @@
 {{define "main"}}
-    {{$canDelete := isDeleter .UserRoles}}
+    {{$isFrozen := (index .Submissions 0).IsFrozen}}
+    {{$canDelete := and (not $isFrozen) (isDeleter .UserRoles)}}
     {{$canFreeze := isFreezer .UserRoles}}
     {{$canViewSubmissionsOfOthers := not (or (isInAudit .UserRoles) (isTrialCurator .UserRoles))}}
     {{$submissionID := (index .Submissions 0).SubmissionID}}
-    {{$isExtreme := eq "Yes" (unpointify .CurationMeta.Extreme)}}
-    {{$isFrozen := (index .Submissions 0).IsFrozen}}
-    {{$UserCanModify := or (isStaff .UserRoles) (eq .UserID (index .Submissions 0).SubmitterID)}}
+    {{$isExtreme := and .CurationMeta (eq "Yes" (unpointify .CurationMeta.Extreme))}}
+    {{$UserCanModify := and (not $isFrozen) (or (isStaff .UserRoles) (eq .UserID (index .Submissions 0).SubmitterID))}}
     {{$isMarkAdded := has "mark-added" (index .Submissions 0).DistinctActions}}
     <script type="text/javascript">
         function showExtremeImages() {
@@ -24,11 +24,11 @@
         }
     </script>
     <div class="content submission-detail">
-        {{if .CurationMeta.Title}}
-            <script>document.title = "{{.CurationMeta.Title}}" + " | FPFSS";</script>
+        {{if (index .Submissions 0).CurationTitle}}
+            <script>document.title = "{{(index .Submissions 0).CurationTitle}}" + " | FPFSS";</script>
         {{end}}
         <header class="submission-header">
-            <h1>View Submission{{if .CurationMeta.GameExists}} (Content Patch){{end}}</h1>
+            <h1>View Submission{{if (index .Submissions 0).GameExists}} (Content Patch){{end}}</h1>
             {{template "view-submission-nav" .}}
         </header>
 
@@ -40,11 +40,11 @@
             <h1 class="center">This submission is frozen.</h1>
         {{end}}
 
-        {{if or (not $isFrozen) ($canFreeze)}}
+        {{if .CanReadDetails}}
             {{$submission := index .Submissions 0}}
             {{$canUpdate := and $UserCanModify (not $isMarkAdded)}}
             {{$canFreezeSubmission := and (not .CurationMeta.GameExists) $canFreeze (not $isMarkAdded)}}
-            {{$canAdminister := and (not $isMarkAdded) (or $canFreezeSubmission $canDelete (isStaff .UserRoles))}}
+            {{$canAdminister := and (not $isMarkAdded) (or $canFreezeSubmission $canDelete (and (not $isFrozen) (isStaff .UserRoles)))}}
             <section class="submission-current-file" aria-label="Current submission file">
                 <div class="submission-current-file-details">
                     <strong>{{ $submission.OriginalFilename }}</strong>
@@ -92,7 +92,7 @@
                                                 onclick="freezeSubmission({{$submissionID}})">Freeze</button>
                                     {{end}}
                                 {{end}}
-                                {{if isStaff .UserRoles}}
+                                {{if and (not $isFrozen) (isStaff .UserRoles)}}
                                     <button type="button" class="pure-button button-override"
                                             onclick="overrideBot({{$submissionID}})">Override Bot</button>
                                 {{end}}
@@ -137,7 +137,7 @@
             {{end}}
         {{end}}
 
-        {{if or (not $isFrozen) ($canFreeze)}}
+        {{if .CanReadDetails}}
             {{if not .CurationMeta.GameExists}}
                 <h3>Curation images</h3>
                 <div id="submission-images">
@@ -539,7 +539,7 @@
                 {{end}}
         {{end}}
 
-        {{if or (not $isFrozen) ($canFreeze)}}
+        {{if .CanReadDetails}}
             <h3>Comments</h3>
             {{range .Comments}}
             <div class="pure-g comment">
@@ -603,7 +603,7 @@
 
             {{template "view-submission-nav" .}}
 
-            {{if and $UserCanModify (not $isMarkAdded)}}
+            {{if and (or $UserCanModify $canFreeze) (not $isMarkAdded)}}
                 {{template "comment-form" .}}
             {{end}}
         {{end}}

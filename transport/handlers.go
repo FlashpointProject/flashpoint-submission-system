@@ -1555,6 +1555,8 @@ func validateSubmissionMetaEditPNG(file multipart.File, header *multipart.FileHe
 }
 
 func (a *App) HandleViewSubmissionPage(w http.ResponseWriter, r *http.Request) {
+	// Access can change on freeze or between viewers; never retain these responses.
+	w.Header().Set("Cache-Control", "private, no-store")
 	ctx := r.Context()
 	uid := utils.UserID(ctx)
 	params := mux.Vars(r)
@@ -1586,6 +1588,8 @@ func (a *App) HandleViewSubmissionPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleViewSubmissionFilesPage(w http.ResponseWriter, r *http.Request) {
+	// Access can change on freeze or between viewers; never retain these responses.
+	w.Header().Set("Cache-Control", "private, no-store")
 	ctx := r.Context()
 	params := mux.Vars(r)
 	submissionID := params[constants.ResourceKeySubmissionID]

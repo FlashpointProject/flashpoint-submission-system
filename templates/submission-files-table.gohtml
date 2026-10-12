@@ -1,5 +1,5 @@
 {{define "submission-files-table"}}
-    {{$canDelete := isDeleter .UserRoles}}
+    {{$canDelete := and (not .IsFrozen) (isDeleter .UserRoles)}}
     <div id="table-wrapper">
         <i>tip: use shift+mousewheel to scroll horizontally</i>
         <div id="table-scroll">

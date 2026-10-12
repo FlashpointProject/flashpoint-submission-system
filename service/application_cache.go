@@ -23,6 +23,7 @@ type applicationCaches struct {
 	submissions       *appcache.Cache[submissionSnapshot]
 	summaries         *appcache.Cache[[]*types.ExtendedSubmission]
 	files             *appcache.Cache[[]*types.ExtendedSubmissionFile]
+	uploaders         *appcache.Cache[[]int64]
 	file              *appcache.Cache[[]*types.SubmissionFile]
 	subscriptions     *appcache.Cache[bool]
 	navigation        *appcache.Cache[submissionNavigation]
@@ -45,6 +46,7 @@ func (s *SiteService) readCaches() *applicationCaches {
 			sessions:          appcache.New[*types.SessionInfo](c, 10000, 8<<20), users: appcache.New[*types.DiscordUser](c, 10000, 8<<20), roles: appcache.New[[]string](c, 10000, 4<<20),
 			submissions: appcache.New[submissionSnapshot](c, 20000, 512<<20), summaries: appcache.New[[]*types.ExtendedSubmission](c, 4000, 16<<20),
 			files: appcache.New[[]*types.ExtendedSubmissionFile](c, 1000, 16<<20), file: appcache.New[[]*types.SubmissionFile](c, 4000, 8<<20),
+			uploaders:     appcache.New[[]int64](c, 20000, 8<<20),
 			subscriptions: appcache.New[bool](c, 20000, 1<<20), navigation: appcache.New[submissionNavigation](c, 4000, 1<<20), metadata: appcache.New[*types.MetadataStatsPageDataBare](c, 1, 4096),
 		}
 	})
@@ -54,7 +56,7 @@ func (s *SiteService) readCaches() *applicationCaches {
 // ApplicationCacheStats contains no user, token, or resource identifiers.
 func (s *SiteService) ApplicationCacheStats() map[string]appcache.Stats {
 	c := s.readCaches()
-	return map[string]appcache.Stats{"site-statistics": c.siteStatistics.Stats(), "all-user-statistics": c.allUserStatistics.Stats(), "user-statistics": c.userStatistics.Stats(), "sessions": c.sessions.Stats(), "users": c.users.Stats(), "roles": c.roles.Stats(), "submissions": c.submissions.Stats(), "summaries": c.summaries.Stats(), "files": c.files.Stats(), "file": c.file.Stats(), "subscriptions": c.subscriptions.Stats(), "navigation": c.navigation.Stats(), "metadata": c.metadata.Stats()}
+	return map[string]appcache.Stats{"site-statistics": c.siteStatistics.Stats(), "all-user-statistics": c.allUserStatistics.Stats(), "user-statistics": c.userStatistics.Stats(), "sessions": c.sessions.Stats(), "users": c.users.Stats(), "roles": c.roles.Stats(), "submissions": c.submissions.Stats(), "uploaders": c.uploaders.Stats(), "summaries": c.summaries.Stats(), "files": c.files.Stats(), "file": c.file.Stats(), "subscriptions": c.subscriptions.Stats(), "navigation": c.navigation.Stats(), "metadata": c.metadata.Stats()}
 }
 func sessionKey(secret string) string       { return fmt.Sprintf("%x", sha256.Sum256([]byte(secret))) }
 func subscriptionKey(uid, sid int64) string { return fmt.Sprintf("%d:%d", uid, sid) }
