@@ -544,6 +544,43 @@ func (a *App) UserCanCommentAction(r *http.Request, uid int64) (bool, error) {
 	return canComment || isAdder || isDecider, nil
 }
 
+// UserCanReadSubmissionDetails checks every actual parent in a batch. Uploading
+// to one submission must never authorize files belonging to another submission.
+func (a *App) UserCanReadSubmissionDetails(r *http.Request, uid int64, batch bool) (bool, error) {
+	params := mux.Vars(r)
+	sids := make(map[int64]bool)
+	if batch {
+		var fids []int64
+		for _, raw := range strings.Split(params[constants.ResourceKeyFileIDs], ",") {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return false, fmt.Errorf("invalid file id")
+			}
+			fids = append(fids, id)
+		}
+		files, err := a.Service.GetSubmissionFiles(r.Context(), fids)
+		if err != nil {
+			return false, err
+		}
+		for _, file := range files {
+			sids[file.SubmissionID] = true
+		}
+	} else {
+		sid, err := strconv.ParseInt(params[constants.ResourceKeySubmissionID], 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("invalid submission id")
+		}
+		sids[sid] = true
+	}
+	for sid := range sids {
+		allowed, err := a.Service.CanReadSubmissionDetails(r.Context(), uid, sid)
+		if err != nil || !allowed {
+			return false, err
+		}
+	}
+	return len(sids) > 0, nil
+}
+
 // IsResourceFrozen accepts resource that is frozen, or if any of them is when multiple are given
 func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error) {
 	ctx := r.Context()

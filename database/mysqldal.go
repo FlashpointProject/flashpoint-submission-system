@@ -374,6 +374,25 @@ func (d *mysqlDAL) GetExtendedSubmissionFilesBySubmissionID(dbs DBSession, sid i
 	return result, nil
 }
 
+// GetSubmissionUploaderIDs returns contributors with at least one active file.
+// Removed versions do not grant read access to a frozen submission.
+func (d *mysqlDAL) GetSubmissionUploaderIDs(dbs DBSession, sid int64) ([]int64, error) {
+	rows, err := dbs.Tx().QueryContext(dbs.Ctx(), `SELECT DISTINCT fk_user_id FROM submission_file WHERE fk_submission_id = ? AND deleted_at IS NULL`, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // StoreCurationMeta stores curation meta
 func (d *mysqlDAL) StoreCurationMeta(dbs DBSession, cm *types.CurationMeta) error {
 	if err := changedFile(dbs, cm.SubmissionFileID); err != nil {

@@ -19,6 +19,22 @@ func lockSubmissionMutation(dbs database.DBSession, sid int64) error {
 	return nil
 }
 
+// Read the current state under the same parent lock held through the mutation.
+// In particular, queued upload validation must not race a freeze commit.
+func lockUnfrozenSubmissionMutation(dbs database.DBSession, sid int64) error {
+	if err := lockSubmissionMutation(dbs, sid); err != nil {
+		return err
+	}
+	var frozen bool
+	if err := dbs.Tx().QueryRowContext(dbs.Ctx(), `SELECT frozen_at IS NOT NULL FROM submission WHERE id = ? FOR UPDATE`, sid).Scan(&frozen); err != nil {
+		return dberr(err)
+	}
+	if frozen {
+		return perr("submission is frozen", http.StatusForbidden)
+	}
+	return nil
+}
+
 // Child-to-parent identity is immutable. Resolve it in a separate short read
 // transaction so the mutation transaction can lock the parent BEFORE taking its
 // snapshot. Re-read the child under that lock before validating or changing it.

@@ -18,6 +18,7 @@ func TestSubmissionMetaEditRejectsOversizedMultipartRequest(t *testing.T) {
 	defer postgres.Close()
 
 	staff := createExtendedTestUser(t, ctx, l, app, db, pgdb, int64(100000801), []int64{roleIDModerator}, "staff")
+	sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", staff.Cookie, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -27,7 +28,7 @@ func TestSubmissionMetaEditRejectsOversizedMultipartRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())
 
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/submission/%d/metaedit", 1), body)
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/submission/%d/metaedit", sid), body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.AddCookie(staff.Cookie)
 	response := httptest.NewRecorder()

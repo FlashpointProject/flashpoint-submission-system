@@ -26,7 +26,7 @@ func renderSubmissionLayout(t *testing.T, roles []string, owner, frozen, added, 
 	if added {
 		sub.DistinctActions = []string{"mark-added"}
 	}
-	data := &types.ViewSubmissionPageData{SubmissionsPageData: types.SubmissionsPageData{BasePageData: types.BasePageData{UserID: 4, UserRoles: roles}, Submissions: []*types.ExtendedSubmission{sub}}, CurationMeta: &types.CurationMeta{GameExists: patch}, CurrentFileUploader: "Latest uploader", CurationImageIDs: []int64{11, 12, 13}}
+	data := &types.ViewSubmissionPageData{SubmissionsPageData: types.SubmissionsPageData{BasePageData: types.BasePageData{UserID: 4, UserRoles: roles}, Submissions: []*types.ExtendedSubmission{sub}}, CurationMeta: &types.CurationMeta{GameExists: patch}, CanReadDetails: !frozen || owner || constants.IsFreezer(roles), CurrentFileUploader: "Latest uploader", CurationImageIDs: []int64{11, 12, 13}}
 	if owner {
 		data.UserID = 1
 	}
@@ -52,9 +52,9 @@ func TestSubmissionLayoutPermissionAndStateGates(t *testing.T) {
 		{name: "trial owner", roles: []string{constants.RoleTrialCurator}, owner: true, update: true, download: true},
 		{name: "tester", roles: []string{constants.RoleTester}, update: true, admin: true, override: true, download: true},
 		{name: "moderator", roles: []string{constants.RoleModerator}, update: true, admin: true, freeze: true, override: true, delete: true, download: true},
-		{name: "frozen owner", owner: true, frozen: true},
+		{name: "frozen owner", owner: true, frozen: true, download: true},
 		{name: "frozen tester", roles: []string{constants.RoleTester}, frozen: true},
-		{name: "frozen moderator", roles: []string{constants.RoleModerator}, frozen: true, update: true, admin: true, freeze: true, override: true, delete: true, download: true},
+		{name: "frozen moderator", roles: []string{constants.RoleModerator}, frozen: true, admin: true, freeze: true, download: true},
 		{name: "added moderator", roles: []string{constants.RoleModerator}, added: true, download: true},
 		{name: "content patch moderator", roles: []string{constants.RoleModerator}, patch: true, update: true, admin: true, override: true, delete: true, download: true},
 	} {

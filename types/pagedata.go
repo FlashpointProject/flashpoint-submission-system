@@ -115,6 +115,7 @@ type EditSubmissionPageData struct {
 
 type ViewSubmissionPageData struct {
 	SubmissionsPageData
+	CanReadDetails       bool
 	CurrentFileUploader  string
 	CurationMeta         *CurationMeta
 	Comments             []*ExtendedComment
@@ -127,6 +128,7 @@ type ViewSubmissionPageData struct {
 
 type SubmissionsFilesPageData struct {
 	BasePageData
+	IsFrozen        bool
 	SubmissionFiles []*ExtendedSubmissionFile
 }
 

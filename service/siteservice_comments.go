@@ -109,6 +109,17 @@ func (s *SiteService) ReceiveComments(ctx context.Context, uid int64, sids []int
 	// TODO optimize batch operation even more
 	for _, submission := range foundSubmissions {
 		sid := submission.SubmissionID
+		// The route check can precede a concurrent freeze. Recheck under the
+		// parent locks so historical contributors remain read-only when frozen.
+		if submission.IsFrozen {
+			roles, err := s.dal.GetDiscordUserRoles(dbs, uid)
+			if err != nil {
+				return dberr(err)
+			}
+			if !constants.IsFreezer(roles) {
+				return perr("submission is frozen", http.StatusForbidden)
+			}
+		}
 
 		err := isActionValidForSubmission(uid, formAction, submission)
 		if err != nil {

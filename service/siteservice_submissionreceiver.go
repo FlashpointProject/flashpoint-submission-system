@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -547,11 +546,8 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 			}
 		}
 		if sid != nil {
-			if err := database.LockSubmissions(dbs, *sid); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return perr("submission not found", http.StatusNotFound)
-				}
-				return dberr(err)
+			if err := lockUnfrozenSubmissionMutation(dbs, *sid); err != nil {
+				return err
 			}
 		}
 

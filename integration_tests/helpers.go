@@ -567,6 +567,21 @@ func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *co
 		}
 		l.Infof("Mock: path param=%s", path)
 
+		if r.URL.Path == "/edit-meta" {
+			require.NoError(t, r.ParseMultipartForm(1<<20))
+			defer r.MultipartForm.RemoveAll()
+			content, err := os.ReadFile(path)
+			require.NoError(t, err)
+			edited, err := os.CreateTemp(filepath.Dir(path), "edited-*.7z")
+			require.NoError(t, err)
+			// Simulate a distinct edited archive; the validation mock supplies meta.
+			_, err = edited.Write(append(content, []byte("\n"+r.FormValue("metadata"))...))
+			require.NoError(t, err)
+			require.NoError(t, edited.Close())
+			json.NewEncoder(w).Encode(types.ValidatorEditMetaResponse{Path: edited.Name()})
+			return
+		}
+
 		if r.URL.Path == "/pack-path" {
 			l.Infof("Mock: Handling /pack-path")
 			meta := defaultValidatorMockMeta()

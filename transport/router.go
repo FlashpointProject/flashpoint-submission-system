@@ -84,8 +84,11 @@ func (a *App) setupRoutes(router *mux.Router) {
 	isAnySubmissionFrozen := func(r *http.Request, uid int64) (bool, error) {
 		return a.IsResourceFrozen(r, constants.ResourceKeySubmissionIDs)
 	}
-	isAnySubmissionFileFrozen := func(r *http.Request, uid int64) (bool, error) {
-		return a.IsResourceFrozen(r, constants.ResourceKeyFileIDs)
+	canReadSubmissionDetails := func(r *http.Request, uid int64) (bool, error) {
+		return a.UserCanReadSubmissionDetails(r, uid, false)
+	}
+	canReadSubmissionFiles := func(r *http.Request, uid int64) (bool, error) {
+		return a.UserCanReadSubmissionDetails(r, uid, true)
 	}
 
 	// SLIM SERVICES
@@ -557,6 +560,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 
 	f = a.UserAuthMux(
 		a.RequestScope(a.HandleApplySubmissionMetaEditPage, types.AuthScopeSubmissionEdit),
+		muxNot(isSubmissionFrozen),
 		muxAny(isStaff,
 			muxAll(isTrialCurator, userOwnsSubmission),
 			muxAll(isInAudit, userOwnsSubmission)))
@@ -635,6 +639,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/api/submission-receiver-resumable/{%s}", constants.ResourceKeySubmissionID),
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
 			a.RequestScope(a.HandleSubmissionReceiverResumable, types.AuthScopeSubmissionUpload),
+			muxNot(isSubmissionFrozen),
 			muxAny(
 				isStaff,
 				muxAll(isTrialCurator, userOwnsSubmission),
@@ -655,6 +660,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/api/submission-receiver-resumable/{%s}", constants.ResourceKeySubmissionID),
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
 			a.RequestScope(a.HandleReceiverResumableTestChunk, types.AuthScopeSubmissionUpload),
+			muxNot(isSubmissionFrozen),
 			muxAny(
 				isStaff,
 				muxAll(isTrialCurator, userOwnsSubmission),
@@ -734,24 +740,14 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadSubmissionFile, types.AuthScopeSubmissionReadFiles),
 			submissionOwnsFile,
-			muxAny(
-				muxAll(muxNot(isSubmissionFrozen), isStaff),
-				muxAll(muxNot(isSubmissionFrozen), isTrialCurator),
-				muxAll(muxNot(isSubmissionFrozen), isInAudit),
-				muxAll(isSubmissionFrozen, isFreezer, muxAny(isStaff, isTrialCurator, isInAudit)),
-			)), false))).
+			canReadSubmissionDetails), false))).
 		Methods("GET")
 
 	router.Handle(
 		fmt.Sprintf("/data/submission-file-batch/{%s}", constants.ResourceKeyFileIDs),
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadSubmissionBatch, types.AuthScopeSubmissionReadFiles),
-			muxAny(
-				muxAll(muxNot(isAnySubmissionFileFrozen), isStaff),
-				muxAll(muxNot(isAnySubmissionFileFrozen), isTrialCurator),
-				muxAll(muxNot(isAnySubmissionFileFrozen), isInAudit),
-				muxAll(isAnySubmissionFileFrozen, isFreezer, muxAny(isStaff, isTrialCurator, isInAudit)),
-			)), false))).
+			canReadSubmissionFiles), false))).
 		Methods("GET")
 
 	router.Handle(
@@ -759,12 +755,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadCurationImage, types.AuthScopeSubmissionRead),
 			submissionOwnsCurationImage,
-			muxAny(
-				muxAll(muxNot(isSubmissionFrozen), isStaff),
-				muxAll(muxNot(isSubmissionFrozen), isTrialCurator),
-				muxAll(muxNot(isSubmissionFrozen), isInAudit),
-				muxAll(isSubmissionFrozen, isFreezer, muxAny(isStaff, isTrialCurator, isInAudit)),
-			)), false))).
+			canReadSubmissionDetails), false))).
 		Methods("GET")
 
 	// soft delete
@@ -798,6 +789,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		fmt.Sprintf("/api/submission/{%s}/override", constants.ResourceKeySubmissionID),
 		http.HandlerFunc(a.RequestJSON(a.UserAuthMux(
 			a.RequestScope(a.HandleOverrideBot, types.AuthScopeAll),
+			muxNot(isSubmissionFrozen),
 			muxAny(isDeleter, isStaff)), false))).
 		Methods("POST")
 

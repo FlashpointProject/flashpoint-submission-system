@@ -173,7 +173,7 @@ func TestSubmissionFileAccess(t *testing.T) {
 		}
 	})
 
-	t.Run("FrozenSubmissionRequiresFreezerRole", func(t *testing.T) {
+	t.Run("FrozenSubmissionRequiresFreezerRoleOrUploader", func(t *testing.T) {
 		sid := uploadTestSubmission(t, l, app, "./test_files/Warpstar4K.7z", submitter.Cookie, nil)
 		files := getSubmissionFilesBySubmissionID(t, ctx, db, sid)
 		require.Len(t, files, 1)

@@ -896,6 +896,9 @@ func (s *SiteService) GetEditSubmissionPageData(ctx context.Context, sid int64) 
 	}
 
 	submission := submissions[0]
+	if submission.IsFrozen {
+		return nil, perr("submission is frozen", http.StatusForbidden)
+	}
 
 	for _, distinctAction := range submission.DistinctActions {
 		if distinctAction == constants.ActionMarkAdded {
@@ -928,7 +931,7 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 	}
 	defer dbs.Rollback()
 
-	if err := lockSubmissionMutation(dbs, sid); err != nil {
+	if err := lockUnfrozenSubmissionMutation(dbs, sid); err != nil {
 		return err
 	}
 
@@ -1074,6 +1077,19 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 		}
 		currentFileUploader = uploader.Username
 	}
+	canReadDetails := true
+	if len(snapshot.Submissions) > 0 && snapshot.Submissions[0].IsFrozen {
+		canReadDetails, err = s.canReadFrozenSubmission(ctx, uid, sid)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !canReadDetails {
+		return &types.ViewSubmissionPageData{
+			SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
+			NextSubmissionID:    nav.Next, PreviousSubmissionID: nav.Previous,
+		}, nil
+	}
 	// External enrichment is deliberately outside the submission snapshot.
 	tags, _ := s.validator.GetTags(ctx)
 	// Match the template's case/whitespace normalization, but only expose this
@@ -1094,6 +1110,7 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 	}
 	return &types.ViewSubmissionPageData{
 		SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
+		CanReadDetails:      true,
 		CurrentFileUploader: currentFileUploader,
 		CurationMeta:        snapshot.Meta, Comments: snapshot.Comments, CurationImageIDs: snapshot.ImageIDs,
 		IsUserSubscribed: subscribed, TagList: submissionTags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
@@ -1156,6 +1173,20 @@ func (s *SiteService) loadSubmissionNavigation(ctx context.Context, sid int64) (
 	return v, nil
 }
 func (s *SiteService) GetSubmissionsFilesPageData(ctx context.Context, sid int64) (*types.SubmissionsFilesPageData, error) {
+	allowed, err := s.CanReadSubmissionDetails(ctx, utils.UserID(ctx), sid)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, perr("you do not have access to frozen submission files", http.StatusUnauthorized)
+	}
+	subs, err := s.GetSubmissionSummary(ctx, sid)
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, perr("submission not found", http.StatusNotFound)
+	}
 	files, err := s.readCaches().files.Get(ctx, fmt.Sprint(sid), func(ctx context.Context) (appcache.Snapshot[[]*types.ExtendedSubmissionFile], error) {
 		dbs, err := s.dal.NewSession(ctx)
 		if err != nil {
@@ -1176,7 +1207,7 @@ func (s *SiteService) GetSubmissionsFilesPageData(ctx context.Context, sid int64
 	if err != nil {
 		return nil, err
 	}
-	return &types.SubmissionsFilesPageData{BasePageData: *bpd, SubmissionFiles: files}, nil
+	return &types.SubmissionsFilesPageData{BasePageData: *bpd, SubmissionFiles: files, IsFrozen: subs[0].IsFrozen}, nil
 }
 
 func (s *SiteService) GetSessions(ctx context.Context, uid int64) ([]*types.SessionInfo, error) {
@@ -1399,7 +1430,7 @@ func (s *SiteService) SoftDeleteSubmissionFile(ctx context.Context, sfid int64, 
 		return dberr(err)
 	}
 	defer dbs.Rollback()
-	if err := lockSubmissionMutation(dbs, sid); err != nil {
+	if err := lockUnfrozenSubmissionMutation(dbs, sid); err != nil {
 		return err
 	}
 
@@ -1469,7 +1500,7 @@ func (s *SiteService) SoftDeleteSubmission(ctx context.Context, sid int64, delet
 	}
 	defer dbs.Rollback()
 
-	if err := lockSubmissionMutation(dbs, sid); err != nil {
+	if err := lockUnfrozenSubmissionMutation(dbs, sid); err != nil {
 		return err
 	}
 	pgdbs, err := s.pgdal.NewSession(ctx)
@@ -1530,7 +1561,7 @@ func (s *SiteService) SoftDeleteComment(ctx context.Context, cid int64, deleteRe
 		return dberr(err)
 	}
 	defer dbs.Rollback()
-	if err := lockSubmissionMutation(dbs, sid); err != nil {
+	if err := lockUnfrozenSubmissionMutation(dbs, sid); err != nil {
 		return err
 	}
 
@@ -1600,7 +1631,7 @@ func (s *SiteService) OverrideBot(ctx context.Context, sid int64) error {
 	}
 	defer dbs.Rollback()
 
-	if err := lockSubmissionMutation(dbs, sid); err != nil {
+	if err := lockUnfrozenSubmissionMutation(dbs, sid); err != nil {
 		return err
 	}
 
