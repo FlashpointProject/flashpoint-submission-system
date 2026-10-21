@@ -17,7 +17,7 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	"github.com/Masterminds/sprig"
+	"github.com/Masterminds/sprig/v3"
 	"github.com/stretchr/testify/require"
 )
 

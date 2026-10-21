@@ -18,7 +18,6 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5"
