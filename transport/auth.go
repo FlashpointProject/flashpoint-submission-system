@@ -22,7 +22,7 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/service"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
 )

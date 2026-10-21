@@ -41,7 +41,7 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/agnivade/levenshtein"
 	"github.com/bwmarrin/discordgo"
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/sirupsen/logrus"
 )
 

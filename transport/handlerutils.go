@@ -19,7 +19,7 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/service"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	"github.com/Masterminds/sprig"
+	"github.com/Masterminds/sprig/v3"
 )
 
 // RenderTemplates is a helper for rendering templates

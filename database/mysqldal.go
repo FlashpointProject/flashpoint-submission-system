@@ -14,7 +14,6 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/sirupsen/logrus"
 )
 
