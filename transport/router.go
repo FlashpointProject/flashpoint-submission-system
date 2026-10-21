@@ -90,6 +90,9 @@ func (a *App) setupRoutes(router *mux.Router) {
 	canReadSubmissionFiles := func(r *http.Request, uid int64) (bool, error) {
 		return a.UserCanReadSubmissionDetails(r, uid, true)
 	}
+	canReadSubmissionMeta := func(r *http.Request, uid int64) (bool, error) {
+		return a.UserCanReadSubmissionMeta(r, uid)
+	}
 
 	// SLIM SERVICES
 
@@ -755,7 +758,7 @@ func (a *App) setupRoutes(router *mux.Router) {
 		http.HandlerFunc(a.RequestData(a.UserAuthMux(
 			a.RequestScope(a.HandleDownloadCurationImage, types.AuthScopeSubmissionRead),
 			submissionOwnsCurationImage,
-			canReadSubmissionDetails), false))).
+			canReadSubmissionMeta), false))).
 		Methods("GET")
 
 	// soft delete

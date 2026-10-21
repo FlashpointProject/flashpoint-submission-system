@@ -26,7 +26,8 @@ func renderSubmissionLayout(t *testing.T, roles []string, owner, frozen, added, 
 	if added {
 		sub.DistinctActions = []string{"mark-added"}
 	}
-	data := &types.ViewSubmissionPageData{SubmissionsPageData: types.SubmissionsPageData{BasePageData: types.BasePageData{UserID: 4, UserRoles: roles}, Submissions: []*types.ExtendedSubmission{sub}}, CurationMeta: &types.CurationMeta{GameExists: patch}, CanReadDetails: !frozen || owner || constants.IsFreezer(roles), CurrentFileUploader: "Latest uploader", CurationImageIDs: []int64{11, 12, 13}}
+	details := !frozen || owner || constants.IsFreezer(roles)
+	data := &types.ViewSubmissionPageData{SubmissionsPageData: types.SubmissionsPageData{BasePageData: types.BasePageData{UserID: 4, UserRoles: roles}, Submissions: []*types.ExtendedSubmission{sub}}, CurationMeta: &types.CurationMeta{GameExists: patch}, CanReadDetails: details, CanReadMeta: details || constants.IsStaff(roles), CurrentFileUploader: "Latest uploader", CurationImageIDs: []int64{11, 12, 13}}
 	if owner {
 		data.UserID = 1
 	}
@@ -46,17 +47,22 @@ func TestSubmissionLayoutPermissionAndStateGates(t *testing.T) {
 		roles                                             []string
 		owner, frozen, added, patch                       bool
 		update, admin, freeze, override, delete, download bool
+		meta, metaOnly                                    bool
 	}{
-		{name: "owner", owner: true, update: true, download: true},
-		{name: "unprivileged other viewer", download: true},
-		{name: "trial owner", roles: []string{constants.RoleTrialCurator}, owner: true, update: true, download: true},
-		{name: "tester", roles: []string{constants.RoleTester}, update: true, admin: true, override: true, download: true},
-		{name: "moderator", roles: []string{constants.RoleModerator}, update: true, admin: true, freeze: true, override: true, delete: true, download: true},
-		{name: "frozen owner", owner: true, frozen: true, download: true},
-		{name: "frozen tester", roles: []string{constants.RoleTester}, frozen: true},
-		{name: "frozen moderator", roles: []string{constants.RoleModerator}, frozen: true, admin: true, freeze: true, download: true},
-		{name: "added moderator", roles: []string{constants.RoleModerator}, added: true, download: true},
-		{name: "content patch moderator", roles: []string{constants.RoleModerator}, patch: true, update: true, admin: true, override: true, delete: true, download: true},
+		{name: "owner", owner: true, update: true, download: true, meta: true},
+		{name: "unprivileged other viewer", download: true, meta: true},
+		{name: "trial owner", roles: []string{constants.RoleTrialCurator}, owner: true, update: true, download: true, meta: true},
+		{name: "tester", roles: []string{constants.RoleTester}, update: true, admin: true, override: true, download: true, meta: true},
+		{name: "moderator", roles: []string{constants.RoleModerator}, update: true, admin: true, freeze: true, override: true, delete: true, download: true, meta: true},
+		{name: "frozen owner", owner: true, frozen: true, download: true, meta: true},
+		{name: "frozen tester", roles: []string{constants.RoleTester}, frozen: true, meta: true, metaOnly: true},
+		{name: "frozen curator", roles: []string{constants.RoleCurator}, frozen: true, meta: true, metaOnly: true},
+		{name: "frozen trial curator", roles: []string{constants.RoleTrialCurator}, frozen: true},
+		{name: "frozen audit user", frozen: true},
+		{name: "frozen moderator", roles: []string{constants.RoleModerator}, frozen: true, admin: true, freeze: true, download: true, meta: true},
+		{name: "added moderator", roles: []string{constants.RoleModerator}, added: true, download: true, meta: true},
+		{name: "content patch moderator", roles: []string{constants.RoleModerator}, patch: true, update: true, admin: true, override: true, delete: true, download: true, meta: true},
+		{name: "frozen content patch tester", roles: []string{constants.RoleTester}, frozen: true, patch: true, meta: true, metaOnly: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			page := renderSubmissionLayout(t, tc.roles, tc.owner, tc.frozen, tc.added, tc.patch, false, 2)
@@ -68,6 +74,9 @@ func TestSubmissionLayoutPermissionAndStateGates(t *testing.T) {
 				{`id="submission-upload-panel"`, tc.update}, {`id="submission-upload-toggle"`, tc.update},
 				{`class="pure-button button-freeze"`, tc.freeze}, {`onclick="overrideBot(`, tc.override}, {`onclick="deleteSubmission(`, tc.delete},
 				{`aria-label="Current submission file"`, tc.download},
+				{`<h3>Curation images</h3>`, tc.meta && !tc.patch}, {`class="curation-image" alt="curation image"`, tc.meta && !tc.patch},
+				{`<h3>Curation meta</h3>`, tc.meta && !tc.patch}, {`<h3>Content Patch meta</h3>`, tc.meta && tc.patch},
+				{`Files and comments are only available`, tc.metaOnly}, {`<h3>Comments</h3>`, tc.download},
 			} {
 				require.Equal(t, expect.want, strings.Contains(page, expect.needle), expect.needle)
 			}
@@ -145,4 +154,12 @@ func TestSubmissionLayoutSingleUploadAndExtremeImages(t *testing.T) {
 	require.NotContains(t, page, ">View older uploads</a>")
 	require.Contains(t, page, ">Show Extreme Images</button>")
 	require.NotContains(t, page, `class="curation-image" alt="curation image"`)
+}
+
+func TestSubmissionLayoutFrozenStaffExtremeImagesStayHidden(t *testing.T) {
+	page := renderSubmissionLayout(t, []string{constants.RoleCurator}, false, true, false, false, true, 2)
+	require.Contains(t, page, ">Show Extreme Images</button>")
+	require.NotContains(t, page, `class="curation-image" alt="curation image"`)
+	require.Contains(t, page, `/data/submission/42/curation-image/11.png`)
+	require.NotContains(t, page, `aria-label="Current submission file"`)
 }

@@ -581,6 +581,15 @@ func (a *App) UserCanReadSubmissionDetails(r *http.Request, uid int64, batch boo
 	return len(sids) > 0, nil
 }
 
+// UserCanReadSubmissionMeta gates curation images, which staff may also see on frozen submissions.
+func (a *App) UserCanReadSubmissionMeta(r *http.Request, uid int64) (bool, error) {
+	sid, err := strconv.ParseInt(mux.Vars(r)[constants.ResourceKeySubmissionID], 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid submission id")
+	}
+	return a.Service.CanReadSubmissionMeta(r.Context(), uid, sid)
+}
+
 // IsResourceFrozen accepts resource that is frozen, or if any of them is when multiple are given
 func (a *App) IsResourceFrozen(r *http.Request, resourceKey string) (bool, error) {
 	ctx := r.Context()

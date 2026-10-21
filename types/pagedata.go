@@ -115,6 +115,9 @@ type EditSubmissionPageData struct {
 
 type ViewSubmissionPageData struct {
 	SubmissionsPageData
+	// CanReadMeta covers metadata and curation images; CanReadDetails adds
+	// files and comments. Frozen submissions may grant only the former.
+	CanReadMeta          bool
 	CanReadDetails       bool
 	CurrentFileUploader  string
 	CurationMeta         *CurationMeta
