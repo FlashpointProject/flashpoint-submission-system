@@ -1077,14 +1077,20 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 		}
 		currentFileUploader = uploader.Username
 	}
-	canReadDetails := true
+	canReadDetails, canReadMeta := true, true
 	if len(snapshot.Submissions) > 0 && snapshot.Submissions[0].IsFrozen {
 		canReadDetails, err = s.canReadFrozenSubmission(ctx, uid, sid)
 		if err != nil {
 			return nil, err
 		}
+		if !canReadDetails {
+			canReadMeta, err = s.canReadFrozenSubmissionMeta(ctx, uid, sid)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	if !canReadDetails {
+	if !canReadMeta {
 		return &types.ViewSubmissionPageData{
 			SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
 			NextSubmissionID:    nav.Next, PreviousSubmissionID: nav.Previous,
@@ -1108,13 +1114,19 @@ func (s *SiteService) GetViewSubmissionPageData(ctx context.Context, uid, sid in
 			submissionTags = append(submissionTags, tag)
 		}
 	}
-	return &types.ViewSubmissionPageData{
+	data := &types.ViewSubmissionPageData{
 		SubmissionsPageData: types.SubmissionsPageData{BasePageData: *bpd, Submissions: snapshot.Submissions},
-		CanReadDetails:      true,
-		CurrentFileUploader: currentFileUploader,
-		CurationMeta:        snapshot.Meta, Comments: snapshot.Comments, CurationImageIDs: snapshot.ImageIDs,
-		IsUserSubscribed: subscribed, TagList: submissionTags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
-	}, nil
+		CanReadMeta:         true,
+		CurationMeta:        snapshot.Meta, CurationImageIDs: snapshot.ImageIDs,
+		TagList: submissionTags, NextSubmissionID: nav.Next, PreviousSubmissionID: nav.Previous,
+	}
+	if canReadDetails {
+		data.CanReadDetails = true
+		data.CurrentFileUploader = currentFileUploader
+		data.Comments = snapshot.Comments
+		data.IsUserSubscribed = subscribed
+	}
+	return data, nil
 }
 func (s *SiteService) loadSubmissionSnapshot(ctx context.Context, sid int64) (submissionSnapshot, error) {
 	var v submissionSnapshot

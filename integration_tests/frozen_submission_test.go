@@ -82,22 +82,29 @@ func TestFrozenSubmissionReadAccessAndCacheIsolation(t *testing.T) {
 	}
 	// Populate the shared caches before freezing, including an unrelated viewer.
 	for _, user := range []*extendedTestUser{stranger, moderator, owner, editor} {
-		require.True(t, detail(user).CanReadDetails)
+		data := detail(user)
+		require.True(t, data.CanReadDetails)
+		require.True(t, data.CanReadMeta)
 	}
 	rr = freezeSubmission(t, l, app, moderator.Cookie, sid)
 	require.Equal(t, 204, rr.Code, rr.Body.String())
-	// Exercise both access orders repeatedly against the same cached submission.
+	full := detail(moderator)
+	require.NotEmpty(t, full.CurationImageIDs)
+	// Exercise all access orders repeatedly against the same cached submission.
+	// Staff without freezer rights or an active upload see only metadata and images.
 	for _, tc := range []struct {
-		user    *extendedTestUser
-		allowed bool
+		user          *extendedTestUser
+		allowed, meta bool
 	}{
-		{stranger, false}, {admin, true}, {owner, false}, {trial, false}, {moderator, true}, {audit, false}, {updater, true}, {editor, true}, {stranger, false}, {owner, false},
+		{stranger, false, true}, {admin, true, true}, {owner, false, false}, {trial, false, false}, {moderator, true, true},
+		{audit, false, false}, {updater, true, true}, {editor, true, true}, {stranger, false, true}, {owner, false, false},
 	} {
-		t.Run(fmt.Sprintf("viewer-%d-%t", tc.user.ID, tc.allowed), func(t *testing.T) {
+		t.Run(fmt.Sprintf("viewer-%d-%t-%t", tc.user.ID, tc.allowed, tc.meta), func(t *testing.T) {
 			data := detail(tc.user)
 			require.Equal(t, tc.user.ID, data.UserID)
 			require.True(t, data.Submissions[0].IsFrozen)
 			require.Equal(t, tc.allowed, data.CanReadDetails)
+			require.Equal(t, tc.meta, data.CanReadMeta)
 			page := frozenRequest(t, l, app, tc.user, "GET", fmt.Sprintf("/web/submission/%d", sid))
 			require.Equal(t, 200, page.Code, page.Body.String())
 			require.Equal(t, "private, no-store", page.Header().Get("Cache-Control"))
@@ -108,21 +115,40 @@ func TestFrozenSubmissionReadAccessAndCacheIsolation(t *testing.T) {
 			require.NotContains(t, html, `onclick="overrideBot(`)
 			require.NotContains(t, html, `onclick="deleteSubmission(`)
 			require.NotContains(t, html, `onclick="deleteComment(`)
-			if tc.allowed {
-				require.NotNil(t, data.CurationMeta)
-				require.NotEmpty(t, data.Comments)
-				require.NotEmpty(t, data.CurationImageIDs)
-				require.Contains(t, html, "private frozen comment sentinel")
+			if tc.meta {
+				require.Equal(t, full.CurationMeta, data.CurationMeta)
+				require.Equal(t, full.CurationImageIDs, data.CurationImageIDs)
+				require.Equal(t, full.TagList, data.TagList)
+				require.Contains(t, html, "<h3>Curation meta</h3>")
 				require.Contains(t, html, "Validator supplied game notes")
-				require.Contains(t, html, `aria-label="Current submission file"`)
+				for _, id := range data.CurationImageIDs {
+					require.Contains(t, html, fmt.Sprintf("/data/submission/%d/curation-image/%d.png", sid, id))
+				}
 			} else {
 				require.Nil(t, data.CurationMeta)
-				require.Empty(t, data.Comments)
 				require.Empty(t, data.CurationImageIDs)
 				require.Empty(t, data.TagList)
-				require.NotContains(t, html, "private frozen comment sentinel")
+				require.NotContains(t, html, "<h3>Curation meta</h3>")
 				require.NotContains(t, html, "Validator supplied game notes")
 				require.NotContains(t, html, "/curation-image/")
+			}
+			if tc.allowed {
+				require.NotEmpty(t, data.Comments)
+				require.Equal(t, full.CurrentFileUploader, data.CurrentFileUploader)
+				require.Contains(t, html, "private frozen comment sentinel")
+				require.Contains(t, html, `aria-label="Current submission file"`)
+				require.NotContains(t, html, "Files and comments are only available")
+			} else {
+				require.Empty(t, data.Comments)
+				require.Empty(t, data.CurrentFileUploader)
+				require.False(t, data.IsUserSubscribed)
+				require.NotContains(t, html, "private frozen comment sentinel")
+				require.NotContains(t, html, `aria-label="Current submission file"`)
+				require.NotContains(t, html, "<h3>Comments</h3>")
+				require.NotContains(t, html, "flashpoint://fpfss/open_curation")
+				if tc.meta {
+					require.Contains(t, html, "Files and comments are only available")
+				}
 			}
 			if tc.user != moderator && tc.user != admin {
 				require.NotContains(t, html, `id="batch-comment"`)
@@ -151,9 +177,20 @@ func TestFrozenSubmissionReadAccessAndCacheIsolation(t *testing.T) {
 			}
 			batch := downloadSubmissionBatch(t, l, app, tc.user.Cookie, []int64{files[0].FileID, files[1].FileID})
 			require.Equal(t, want, batch.Code)
-			images := getCurationImageIDsBySubmissionID(t, maria, sid)
-			image := downloadCurationImage(t, l, app, tc.user.Cookie, sid, images[len(images)-1])
-			require.Equal(t, want, image.Code, image.Body.String())
+			wantImage := http.StatusUnauthorized
+			if tc.meta {
+				wantImage = http.StatusOK
+			}
+			// Images of a removed version stay unreachable for everyone; the
+			// current version's images follow the metadata gate.
+			for _, id := range full.CurationImageIDs {
+				image := downloadCurationImage(t, l, app, tc.user.Cookie, sid, id)
+				require.Equal(t, wantImage, image.Code, image.Body.String())
+				if tc.meta {
+					require.Equal(t, "private, no-store", image.Header().Get("Cache-Control"))
+					require.NotEmpty(t, image.Body.Bytes())
+				}
+			}
 		})
 	}
 	// Summary/search stays visible; the API must not accidentally hide the row.
@@ -172,17 +209,20 @@ func TestFrozenSubmissionReadAccessAndCacheIsolation(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			user := updater
-			allowed := true
-			if i%2 == 0 {
-				user = stranger
-				allowed = false
+			user, allowed, meta := updater, true, true
+			switch i % 3 {
+			case 1:
+				user, allowed = stranger, false
+			case 2:
+				user, allowed, meta = trial, false, false
 			}
 			rr := frozenRequest(t, l, app, user, "GET", fmt.Sprintf("/api/submission/%d", sid))
 			var data types.ViewSubmissionPageData
 			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &data))
 			require.Equal(t, allowed, data.CanReadDetails)
-			require.Equal(t, allowed, data.CurationMeta != nil)
+			require.Equal(t, allowed, len(data.Comments) > 0)
+			require.Equal(t, meta, data.CanReadMeta)
+			require.Equal(t, meta, data.CurationMeta != nil)
 		}(i)
 	}
 	wg.Wait()
@@ -220,7 +260,10 @@ func TestFrozenSubmissionReadAccessAndCacheIsolation(t *testing.T) {
 	_, err = app.Service.SaveUser(actor, &types.DiscordUser{ID: moderator.ID, Username: "former moderator"}, types.AuthScopeAll, "frozen-test", "127.0.0.1")
 	require.NoError(t, err)
 	require.False(t, detail(moderator).CanReadDetails)
+	require.False(t, detail(moderator).CanReadMeta)
 	require.Equal(t, 401, downloadSubmissionFile(t, l, app, moderator.Cookie, sid, files[0].FileID).Code)
+	revokedImages := getCurationImageIDsBySubmissionID(t, maria, sid)
+	require.Equal(t, 401, downloadCurationImage(t, l, app, moderator.Cookie, sid, revokedImages[len(revokedImages)-1]).Code)
 	require.False(t, detail(owner).CanReadDetails)
 	require.True(t, detail(updater).CanReadDetails)
 }
@@ -324,7 +367,9 @@ func TestFrozenSubmissionAutomaticFreeze(t *testing.T) {
 	after := get(verifier)
 	require.True(t, after.Submissions[0].IsFrozen)
 	require.False(t, after.CanReadDetails)
-	require.Nil(t, after.CurationMeta)
+	require.True(t, after.CanReadMeta)
+	require.NotNil(t, after.CurationMeta)
+	require.NotEmpty(t, after.CurationImageIDs)
 	require.Empty(t, after.Comments)
 	ownerData := get(owner)
 	require.True(t, ownerData.CanReadDetails)
@@ -361,7 +406,9 @@ func TestFrozenSubmissionUploadRemovalRevokesAccess(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &data))
 		require.True(t, data.Submissions[0].IsFrozen)
 		require.Equal(t, allowed, data.CanReadDetails)
-		require.Equal(t, allowed, data.CurationMeta != nil)
+		// Every viewer here is staff, so losing details keeps the metadata view.
+		require.True(t, data.CanReadMeta)
+		require.NotNil(t, data.CurationMeta)
 		want := 401
 		if allowed {
 			want = 200

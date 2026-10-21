@@ -35,7 +35,23 @@ func (s *SiteService) canReadFrozenSubmission(ctx context.Context, uid, sid int6
 	return slices.Contains(ids, uid), err
 }
 
-// CanReadSubmissionDetails also protects images and every archive version.
+// Staff may review a frozen curation's metadata, logo and screenshot, but its
+// files and comments stay limited to freezers and active contributors.
+func (s *SiteService) canReadFrozenSubmissionMeta(ctx context.Context, uid, sid int64) (bool, error) {
+	if uid == 0 {
+		return false, nil
+	}
+	roles, err := s.GetUserRoles(ctx, uid)
+	if err != nil {
+		return false, err
+	}
+	if constants.IsStaff(roles) {
+		return true, nil
+	}
+	return s.canReadFrozenSubmission(ctx, uid, sid)
+}
+
+// CanReadSubmissionDetails protects every archive version.
 // Summaries/search remain available to all authenticated viewers.
 func (s *SiteService) CanReadSubmissionDetails(ctx context.Context, uid, sid int64) (bool, error) {
 	subs, err := s.GetSubmissionSummary(ctx, sid)
@@ -49,4 +65,19 @@ func (s *SiteService) CanReadSubmissionDetails(ctx context.Context, uid, sid int
 		return true, nil
 	}
 	return s.canReadFrozenSubmission(ctx, uid, sid)
+}
+
+// CanReadSubmissionMeta protects curation images, which staff may also see.
+func (s *SiteService) CanReadSubmissionMeta(ctx context.Context, uid, sid int64) (bool, error) {
+	subs, err := s.GetSubmissionSummary(ctx, sid)
+	if err != nil {
+		return false, err
+	}
+	if len(subs) == 0 {
+		return false, perr("submission not found", http.StatusNotFound)
+	}
+	if !subs[0].IsFrozen {
+		return true, nil
+	}
+	return s.canReadFrozenSubmissionMeta(ctx, uid, sid)
 }

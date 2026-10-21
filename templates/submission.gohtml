@@ -38,6 +38,9 @@
 
         {{if $isFrozen}}
             <h1 class="center">This submission is frozen.</h1>
+            {{if and .CanReadMeta (not .CanReadDetails)}}
+                <p class="center">Files and comments are only available to moderators and the curation's uploaders.</p>
+            {{end}}
         {{end}}
 
         {{if .CanReadDetails}}
@@ -137,7 +140,7 @@
             {{end}}
         {{end}}
 
-        {{if .CanReadDetails}}
+        {{if .CanReadMeta}}
             {{if not .CurationMeta.GameExists}}
                 <h3>Curation images</h3>
                 <div id="submission-images">
