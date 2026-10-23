@@ -448,7 +448,20 @@ function initializeFilterLayout() {
     const layout = requested === "simple" || requested === "advanced" ? requested : getDefaultFilterLayout()
     for (const mode of ["simple", "advanced"]) {
         const form = document.getElementById(`filter-form-${mode}`)
-        if (form) form.hidden = mode !== layout
+        if (!form) continue
+        form.hidden = mode !== layout
+        // Runs for native submits (including Enter) and quick-filter .submit().
+        form.onformdata = event => {
+            const data = event.formData
+            for (const name of new Set(data.keys())) {
+                const values = data.getAll(name)
+                if (!values.includes("")) continue
+                data.delete(name)
+                for (const value of values) {
+                    if (value !== "") data.append(name, value)
+                }
+            }
+        }
     }
 }
 

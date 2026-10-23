@@ -8,10 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"testing"
 
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
 	"github.com/FlashpointProject/flashpoint-submission-system/service"
+	"github.com/FlashpointProject/flashpoint-submission-system/types"
 	"github.com/FlashpointProject/flashpoint-submission-system/utils"
 	"github.com/gorilla/schema"
 	"github.com/sirupsen/logrus"
@@ -27,6 +30,42 @@ func (c *submissionFilterBoundaryConnector) Connect(context.Context) (driver.Con
 	return nil, errors.New("submission filter test stopped at database boundary")
 }
 func (*submissionFilterBoundaryConnector) Driver() driver.Driver { return nil }
+
+func TestSubmissionFilterBlankFieldsMatchOmittedFields(t *testing.T) {
+	decoder := schema.NewDecoder()
+	decoder.ZeroEmpty(false)
+	decoder.IgnoreUnknownKeys(true)
+	for _, query := range []string{"", "filter-layout=advanced&order-by=size&asc-desc=desc", "results-per-page=25&page=2&has-additional-applications=no&is-extreme=no"} {
+		t.Run(query, func(t *testing.T) {
+			short, err := url.ParseQuery(query)
+			require.NoError(t, err)
+			long, err := url.ParseQuery(query)
+			require.NoError(t, err)
+			// Blank text, number and select controls must have the same server
+			// meaning as missing parameters; preserve explicitly selected values.
+			fields := reflect.TypeOf(types.SubmissionsFilter{})
+			for i := 0; i < fields.NumField(); i++ {
+				field := fields.Field(i)
+				name := field.Tag.Get("schema")
+				if name != "" && field.Type.Kind() == reflect.Ptr && !long.Has(name) {
+					long.Set(name, "")
+				}
+			}
+			long.Set("submission-id", "")
+			var shortFilter, longFilter types.SubmissionsFilter
+			require.NoError(t, decoder.Decode(&shortFilter, short))
+			require.NoError(t, decoder.Decode(&longFilter, long))
+			require.NoError(t, shortFilter.Validate())
+			require.NoError(t, longFilter.Validate())
+			// The decoder produces an empty slice for submission-id= and nil
+			// when omitted. Both disable the ID filter (which checks length).
+			require.Empty(t, shortFilter.SubmissionIDs)
+			require.Empty(t, longFilter.SubmissionIDs)
+			longFilter.SubmissionIDs = nil
+			require.Equal(t, shortFilter, longFilter)
+		})
+	}
+}
 
 func TestSubmissionFilterHTTPValidation(t *testing.T) {
 	cases := []struct {
