@@ -40,7 +40,7 @@ func isActionValidForSubmission(uid int64, formAction string, submission *types.
 	}
 
 	// don't let last uploader decide on the submission
-	if formAction == constants.ActionAssignTesting || formAction == constants.ActionAssignVerification || formAction == constants.ActionUnassignVerification {
+	if formAction == constants.ActionAssignTesting || formAction == constants.ActionAssignVerification {
 		if uid == submission.LastUploaderID {
 			return perr(fmt.Sprintf("you are the uploader of the newest version of submission %d, so you cannot assign it", sid), http.StatusBadRequest)
 		}

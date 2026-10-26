@@ -55,8 +55,17 @@ func TestCommentFormReviewControls(t *testing.T) {
 		require.NotContains(t, render(s), "button-assign-verification")
 		s.AssignedVerificationUserIDs = []int64{1}
 		body := render(s)
-		require.NotContains(t, body, "button-unassign-verification")
+		require.Contains(t, body, "button-unassign-verification")
 		require.NotContains(t, body, "button-verify")
+		require.Contains(t, body, "button-comment")
+	})
+	t.Run("uploader testing controls", func(t *testing.T) {
+		s := types.ExtendedSubmission{LastUploaderID: 1}
+		require.NotContains(t, render(s), "button-assign-testing")
+		s.AssignedTestingUserIDs = []int64{1}
+		body := render(s)
+		require.Contains(t, body, "button-unassign-testing")
+		require.NotContains(t, body, "button-approve")
 		require.Contains(t, body, "button-comment")
 	})
 }

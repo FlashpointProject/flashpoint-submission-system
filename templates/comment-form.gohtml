@@ -57,7 +57,7 @@
                                 {{end}}
                             {{end}}
                         {{end}}
-                    {{else if not (eq .UserID $submission.LastUploaderID)}}
+                    {{else}}
                         <button type="button" class="pure-button pure-button button-unassign-verification"
                                 onclick="batchComment('submission-checkbox', 'sid', 'unassign-verification')">
                             Unassign Verification
