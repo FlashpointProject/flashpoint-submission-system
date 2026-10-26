@@ -253,10 +253,13 @@ func TestActionValidator_UploaderVerificationGuard(t *testing.T) {
 	t.Run("uploader cannot assign verification even when somebody else approved", func(t *testing.T) {
 		assertActionValidation(t, 1, constants.ActionAssignVerification, &submission, "you are the uploader of the newest version of submission 42, so you cannot assign it")
 	})
-	t.Run("uploader cannot remove own verification assignment", func(t *testing.T) {
+	t.Run("uploader can remove own verification assignment", func(t *testing.T) {
 		submission.AssignedVerificationUserIDs = []int64{1}
-		assertActionValidation(t, 1, constants.ActionUnassignVerification, &submission,
-			"you are the uploader of the newest version of submission 42, so you cannot assign it")
+		assertActionValidation(t, 1, constants.ActionUnassignVerification, &submission, "")
+	})
+	t.Run("uploader can remove own testing assignment", func(t *testing.T) {
+		submission.AssignedTestingUserIDs = []int64{1}
+		assertActionValidation(t, 1, constants.ActionUnassignTesting, &submission, "")
 	})
 }
 
