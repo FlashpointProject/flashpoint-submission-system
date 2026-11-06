@@ -6,13 +6,16 @@
 *.md
 .env*
 !.env.template
-*.sqlite*
-*.db*
-*.bck
-*.bak
-*.log
-*.log.gz
-*.sql.zst
+**/.env*
+!**/.env.template
+!**/.env.example
+**/*.sqlite*
+**/*.db*
+**/*.bck
+**/*.bak
+**/*.log
+**/*.log.gz
+**/*.sql.zst
 node_modules
 Dockerfile*
 
