@@ -1,0 +1,31 @@
+# Local files that must never reach a build context.
+.git
+.github
+.idea
+.vscode
+*.md
+.env*
+!.env.template
+*.sqlite*
+*.db*
+*.bck
+*.bak
+*.log
+*.log.gz
+*.sql.zst
+node_modules
+Dockerfile*
+
+# Local data, dumps and generated output
+files/
+backups/
+resumable-data/
+resumableuploadservice.db*
+db.db*
+snapshot-results/
+integration_tests/results/
+integration_tests/absolute.env
+integration_tests/browser/node_modules/
+
+# Submodule (not part of either image)
+validator/
