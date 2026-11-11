@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/agnivade/levenshtein v1.2.2
+	github.com/bodgit/sevenzip v1.6.6-0.20261010225400-bc7ebbd2043c
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/felixge/httpsnoop v1.1.0
 	github.com/gemnasium/logrus-graylog-hook/v3 v3.2.2
@@ -22,6 +23,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.6
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.58.0
 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
 	golang.org/x/image v0.47.0
@@ -38,6 +40,9 @@ require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
+	github.com/andybalholm/brotli v1.2.7 // indirect; security minimum for bodgit/sevenzip (docs/validator-go-spec.md)
+	github.com/bodgit/plumbing v1.3.0 // indirect
+	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/go-openapi/jsonreference v1.0.3 // indirect
 	github.com/go-openapi/spec v1.0.1 // indirect
@@ -50,20 +55,26 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.29.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/huandu/xstrings v1.6.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
+	github.com/klauspost/compress v1.20.3 // indirect; security minimum for bodgit/sevenzip (docs/validator-go-spec.md)
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/shopspring/decimal v1.6.0 // indirect
+	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
+	github.com/stangelandcl/ppmd v0.1.1 // indirect
 	github.com/stretchr/objx v0.8.0 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	github.com/ulikunitz/xz v0.5.17 // indirect; security minimum for bodgit/sevenzip (docs/validator-go-spec.md)
+	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect

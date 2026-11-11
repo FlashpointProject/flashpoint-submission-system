@@ -2,236 +2,69 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
-	"net/http"
-	"net/url"
-	"path/filepath"
-	"strings"
-	"time"
 
-	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
+	"github.com/FlashpointProject/flashpoint-submission-system/curation"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
-	"github.com/FlashpointProject/flashpoint-submission-system/utils"
-	"sync"
 )
 
+// curationValidator is the Validator FPFSS uses: the curation package for
+// archives and the wiki for tag descriptions.
 type curationValidator struct {
-	tagsOnce           sync.Once
-	tags               *appcache.Cache[[]types.Tag]
-	validatorServerURL string
+	validator *curation.Validator
+	tags      *curation.WikiTags
 }
 
-func NewValidator(validatorServerURL string) *curationValidator {
-	return &curationValidator{
-		validatorServerURL: validatorServerURL,
-	}
+func NewValidator(validator *curation.Validator, tags *curation.WikiTags) *curationValidator {
+	return &curationValidator{validator: validator, tags: tags}
 }
 
-func (c *curationValidator) ProvideArchiveForRepacking(filePath string) (*types.ValidatorRepackResponse, error) {
-	filePath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, err
-	}
-	client := http.Client{Timeout: 86400 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("%s/pack-path?path=%s", c.validatorServerURL, url.QueryEscape(filePath)), "application/json;charset=utf-8", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	bytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check the response
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("provide to remote error: %s", string(bytes))
-	}
-
-	var vr types.ValidatorRepackResponse
-	err = json.Unmarshal(bytes, &vr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &vr, nil
+func (c *curationValidator) ProvideArchiveForValidation(ctx context.Context, filePath string) (*types.ValidatorResponse, error) {
+	return c.validator.Validate(ctx, filePath)
 }
 
-func (c *curationValidator) ProvideArchiveForValidation(filePath string) (*types.ValidatorResponse, error) {
-	filePath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, err
+// ProvideArchiveForRepacking packs the curation. A curation that cannot be
+// packed is reported in the response's Error, as the Python validator did.
+func (c *curationValidator) ProvideArchiveForRepacking(ctx context.Context, filePath string) (*types.ValidatorRepackResponse, error) {
+	vr, err := c.validator.Pack(ctx, filePath)
+	var ce *curation.CurationError
+	if errors.As(err, &ce) {
+		return &types.ValidatorRepackResponse{Error: &ce.Message}, nil
 	}
-	client := http.Client{Timeout: 86400 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("%s/provide-path?path=%s", c.validatorServerURL, url.QueryEscape(filePath)), "application/json;charset=utf-8", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	bytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check the response
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("provide to remote error: %s", string(bytes))
-	}
-
-	var vr types.ValidatorResponse
-	err = json.Unmarshal(bytes, &vr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &vr, nil
+	return vr, err
 }
 
-func (c *curationValidator) Validate(ctx context.Context, file io.Reader, filename string) (*types.ValidatorResponse, error) {
-	resp, err := utils.UploadMultipartFile(ctx, c.validatorServerURL+"/upload", file, filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var vr types.ValidatorResponse
-	err = json.Unmarshal(resp, &vr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &vr, nil
-}
-
-func (c *curationValidator) ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) (*string, error) {
-	filePath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, err
-	}
-
+// ApplyEdit writes an edited copy of the curation and returns its path. The
+// caller removes the copy's directory afterwards. For a problem with the
+// curation, the error is only the curator-facing message.
+func (c *curationValidator) ApplyEdit(ctx context.Context, filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) (*string, error) {
 	if editCurationMeta == nil && logoFile == nil && screenshotFile == nil {
 		return nil, fmt.Errorf("at least one field must be provided")
 	}
+	var logo, screenshot io.Reader
+	if logoFile != nil {
+		logo = *logoFile
+	}
+	if screenshotFile != nil {
+		screenshot = *screenshotFile
+	}
 
-	body, pipeWriter := io.Pipe()
-	multipartWriter := multipart.NewWriter(pipeWriter)
-	requestURL := fmt.Sprintf("%s/edit-meta?path=%s", c.validatorServerURL, url.QueryEscape(filePath))
-	req, err := http.NewRequest(http.MethodPost, requestURL, body)
+	editedPath, err := c.validator.EditMeta(ctx, filePath, editCurationMeta, logo, screenshot)
+	var ce *curation.CurationError
+	if errors.As(err, &ce) {
+		return nil, errors.New(ce.Message)
+	}
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-
-	writeResult := make(chan error, 1)
-	go func() {
-		writeErr := writeApplyEditMultipart(multipartWriter, editCurationMeta, logoFile, screenshotFile)
-		if writeErr == nil {
-			writeErr = multipartWriter.Close()
-		}
-		_ = pipeWriter.CloseWithError(writeErr)
-		writeResult <- writeErr
-	}()
-
-	client := http.Client{Timeout: 86400 * time.Second}
-	resp, requestErr := client.Do(req)
-	if requestErr != nil {
-		_ = body.CloseWithError(requestErr)
-	}
-	writeErr := <-writeResult
-	if requestErr != nil || writeErr != nil {
-		return nil, fmt.Errorf("http error: %v, multipart error: %v", requestErr, writeErr)
-	}
-	defer resp.Body.Close()
-
-	bytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check the response
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("provide to remote error: %s", string(bytes))
-	}
-
-	var vr types.ValidatorEditMetaResponse
-	err = json.Unmarshal(bytes, &vr)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(vr.CurationErrors) > 0 {
-		return nil, fmt.Errorf("errors in meta: %s", strings.Join(vr.CurationErrors, "; "))
-	}
-
-	return &vr.Path, nil
+	return &editedPath, nil
 }
 
-func writeApplyEditMultipart(writer *multipart.Writer, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) error {
-	if editCurationMeta != nil {
-		jsonData, err := json.Marshal(editCurationMeta)
-		if err != nil {
-			return err
-		}
-		if err := writer.WriteField("metadata", string(jsonData)); err != nil {
-			return err
-		}
-	}
-
-	for _, file := range []struct {
-		fieldName string
-		fileName  string
-		file      *multipart.File
-	}{
-		{fieldName: "logo", fileName: "logo.png", file: logoFile},
-		{fieldName: "screenshot", fileName: "ss.png", file: screenshotFile},
-	} {
-		if file.file == nil {
-			continue
-		}
-		part, err := writer.CreateFormFile(file.fieldName, file.fileName)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(part, *file.file); err != nil {
-			return fmt.Errorf("copying %s: %w", file.fieldName, err)
-		}
-	}
-
-	return nil
-}
-
+// GetTags returns the category and wiki tags. curation.WikiTags caches the
+// wiki list and falls back to the last good one, so the error is always nil.
 func (c *curationValidator) GetTags(ctx context.Context) ([]types.Tag, error) {
-	c.tagsOnce.Do(func() { c.tags = appcache.New[[]types.Tag](&appcache.Coordinator{}, 1, 32<<20) })
-	return c.tags.Get(ctx, "tags", func(ctx context.Context) (appcache.Snapshot[[]types.Tag], error) {
-		tags, err := c.getTags(ctx)
-		return appcache.Snapshot[[]types.Tag]{Value: tags, Expires: time.Now().Add(10 * time.Minute)}, err
-	})
-}
-
-func (c *curationValidator) getTags(ctx context.Context) ([]types.Tag, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.validatorServerURL+"/tags", nil)
-	if err != nil {
-		return nil, err
-	}
-	client := http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("validator tags returned HTTP %d", resp.StatusCode)
-	}
-
-	var tr types.ValidatorTagResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
-		return nil, err
-	}
-
-	return tr.Tags, nil
+	return c.tags.GetTags(ctx)
 }

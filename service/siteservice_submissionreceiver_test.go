@@ -36,7 +36,7 @@ type failedSubmissionValidator struct {
 	pgOpened *bool
 }
 
-func (v failedSubmissionValidator) ProvideArchiveForValidation(string) (*types.ValidatorResponse, error) {
+func (v failedSubmissionValidator) ProvideArchiveForValidation(context.Context, string) (*types.ValidatorResponse, error) {
 	if *v.pgOpened {
 		return nil, errors.New("PostgreSQL opened before validator completed")
 	}

@@ -81,7 +81,7 @@ func TestDiscordTagPreviews(t *testing.T) {
 	conf := config.GetConfig(nil)
 	pg := database.OpenPostgresDB(utils.LogCtx(f.Ctx), conf)
 	t.Cleanup(pg.Close)
-	svc := service.NewWithMocks(utils.LogCtx(f.Ctx), f.Maria, pg, nil, nil, "", 0, "", "", true, nil, "", "")
+	svc := service.NewWithMocks(utils.LogCtx(f.Ctx), f.Maria, pg, nil, nil, nil, 0, "", "", true, nil, "", "")
 	_, err := pg.Exec(f.Ctx, `INSERT INTO tag_category(id,name,color) VALUES(50001,'Genre','#ffffff');
  INSERT INTO tag_alias(name,tag_id) VALUES('Platformer',50001),('Platform Game',50001);
  INSERT INTO tag(id,primary_alias,category_id,description,action,reason,user_id) VALUES(50001,'Platformer',50001,'Jump between platforms','create','PRIVATE revision reason',123)`)

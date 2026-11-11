@@ -1,0 +1,56 @@
+{
+  "tags": [
+    {
+      "name": "Action",
+      "description": "These games are active and action-packed, whether they involve running, jumping, shooting, or something else."
+    },
+    {
+      "name": "Adventure",
+      "description": "In Adventure games, the player experiences an interactive story driven by exploration and/or puzzle solving."
+    },
+    {
+      "name": "Arcade",
+      "description": "Arcade games have easily graspable gameplay and a focus on getting a high score."
+    },
+    {
+      "name": "Card",
+      "description": "Games where the gameplay revolves around using cards. Some are accompanied by the 'Gambling' tag."
+    },
+    {
+      "name": "Creative",
+      "description": "Games facilitating user made content, from customizing characters to coloring to making your own picture."
+    },
+    {
+      "name": "Educational",
+      "description": "Educational games aim to teach something as you play."
+    },
+    {
+      "name": "Mathematical",
+      "description": "Games which are generally themed around fields of recreational mathematics."
+    },
+    {
+      "name": "Puzzle",
+      "description": "Puzzle games involve brainteasers of all types, from fast-paced matching games to hidden object puzzles."
+    },
+    {
+      "name": "Simulation",
+      "description": "This type of a game attempts to simulate something from real life, like a card game or just walking around."
+    },
+    {
+      "name": "Sports",
+      "description": "Sports games attempt to replicate the gameplay of physical sports. This also encompasses fictional sports such as Quidditch. A game does not have to perfectly replicate a sport, so long as it is inspired by sports."
+    },
+    {
+      "name": "Strategy",
+      "description": "Strategy games come in many forms, but usually involve controlling units in an efficient way to defeat some kind of enemy."
+    },
+    {
+      "name": "Other",
+      "description": "If a game doesn't seem to fit anywhere else, it will probably fit in one of these tags."
+    },
+    {
+      "name": "Game Jam",
+      "description": "Games created from scratch during a very limited amount of time, usually between 24 to 72 hours, following a provided theme."
+    }
+  ]
+}
