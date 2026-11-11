@@ -60,7 +60,7 @@ func (s *SiteService) processEditedMetaSubmission(ctx context.Context, dbs datab
 	}
 
 	err = func() error {
-		vr, err := s.validator.ProvideArchiveForValidation(destinationFilePath)
+		vr, err := s.validator.ProvideArchiveForValidation(ctx, destinationFilePath)
 		if err != nil {
 			utils.LogCtx(ctx).Error(err)
 			return fmt.Errorf("validator bot: %s", err.Error())
@@ -215,40 +215,22 @@ func (s *SiteService) handleSubmissionFileUpdate(ctx context.Context, dbs databa
 	if sub != nil {
 		vr.Meta.GameExists = sub.GameExists
 	}
+	if vr.Meta.GameExists {
+		vr.CurationErrors = withoutIdenticalLaunchCommandError(vr.CurationErrors)
+	}
 
 	if err := s.dal.StoreCurationMeta(dbs, &vr.Meta); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
 	}
 
-	// feed the curation feed
+	var shouldAutofreeze bool
+	vr.CurationWarnings, shouldAutofreeze = takeFreezerWarning(vr.CurationWarnings)
 	isCurationValid := len(vr.CurationErrors) == 0 && len(vr.CurationWarnings) == 0
-
-	// do not create notification if the only problem is the freezer
-	if len(vr.CurationErrors) == 0 && len(vr.CurationWarnings) == 1 && strings.Contains(vr.CurationWarnings[0], "Curation should be frozen") {
-		isCurationValid = true
-	}
-
-	// determine if we should autofreeze the submission
-	shouldAutofreeze := false
-	warningIndex := 0
-	warning := ""
-
-	for warningIndex, warning = range vr.CurationWarnings {
-		if strings.Contains(warning, "Curation should be frozen") {
-			shouldAutofreeze = true
-			break
-		}
-	}
 
 	if err := s.dal.UpdateSubmissionAutofreeze(dbs, submissionID, shouldAutofreeze); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		return nil, dberr(err)
-	}
-
-	// remove freezer warning from the validator response
-	if len(vr.CurationWarnings) > 0 {
-		vr.CurationWarnings = append(vr.CurationWarnings[:warningIndex], vr.CurationWarnings[warningIndex+1:]...)
 	}
 
 	if err := s.createCurationFeedMessage(dbs, uid, submissionID, isSubmissionNew, isCurationValid, &vr.Meta, isAudition); err != nil {
@@ -507,7 +489,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 		}
 		defer readCloser.Close()
 
-		vr, err = s.validator.ProvideArchiveForValidation(destinationFilePath)
+		vr, err = s.validator.ProvideArchiveForValidation(ctx, destinationFilePath)
 		if err != nil {
 			utils.LogCtx(ctx).Error(err)
 			return perr(fmt.Sprintf("validator bot: %s", err.Error()), http.StatusInternalServerError)
@@ -563,16 +545,7 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 			// Make sure it's at least set to nothing
 			msgStr := ""
 			msg = &msgStr
-			// Remove identical launch command error
-			filteredStrings := make([]string, 0)
-
-			for _, str := range vr.CurationErrors {
-				if !strings.HasPrefix(str, "Identical launch command") {
-					filteredStrings = append(filteredStrings, str)
-				}
-			}
-
-			vr.CurationErrors = filteredStrings
+			vr.CurationErrors = withoutIdenticalLaunchCommandError(vr.CurationErrors)
 		}
 
 		return nil
@@ -713,35 +686,14 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 		return &destinationFilePath, nil, 0, dberr(err)
 	}
 
-	// feed the curation feed
+	var shouldAutofreeze bool
+	vr.CurationWarnings, shouldAutofreeze = takeFreezerWarning(vr.CurationWarnings)
 	isCurationValid := len(vr.CurationErrors) == 0 && len(vr.CurationWarnings) == 0
-
-	// do not create notification if the only problem is the freezer
-	if len(vr.CurationErrors) == 0 && len(vr.CurationWarnings) == 1 && strings.Contains(vr.CurationWarnings[0], "Curation should be frozen") {
-		isCurationValid = true
-	}
-
-	// determine if we should autofreeze the submission
-	shouldAutofreeze := false
-	warningIndex := 0
-	warning := ""
-
-	for warningIndex, warning = range vr.CurationWarnings {
-		if strings.Contains(warning, "Curation should be frozen") {
-			shouldAutofreeze = true
-			break
-		}
-	}
 
 	if err := s.dal.UpdateSubmissionAutofreeze(dbs, submissionID, shouldAutofreeze); err != nil {
 		utils.LogCtx(ctx).Error(err)
 		s.SSK.SetFailed(tempName, "internal error")
 		return &destinationFilePath, nil, 0, dberr(err)
-	}
-
-	// remove freezer warning from the validator response
-	if len(vr.CurationWarnings) > 0 {
-		vr.CurationWarnings = append(vr.CurationWarnings[:warningIndex], vr.CurationWarnings[warningIndex+1:]...)
 	}
 
 	if err := s.createCurationFeedMessage(dbs, uid, submissionID, isSubmissionNew, isCurationValid, &vr.Meta, isAudition); err != nil {
@@ -883,6 +835,34 @@ func (s *SiteService) processReceivedSubmission(ctx context.Context, dbs databas
 	return &destinationFilePath, imageFilePaths, submissionID, nil
 }
 
+// takeFreezerWarning removes the validator's "Curation should be frozen"
+// warnings and reports whether there were any. That warning means the
+// submission gets frozen automatically; it is not a problem with the curation.
+func takeFreezerWarning(warnings []string) ([]string, bool) {
+	rest := make([]string, 0, len(warnings))
+	freeze := false
+	for _, w := range warnings {
+		if strings.Contains(w, "Curation should be frozen") {
+			freeze = true
+			continue
+		}
+		rest = append(rest, w)
+	}
+	return rest, freeze
+}
+
+// withoutIdenticalLaunchCommandError drops the duplicate launch command error,
+// which is expected when the curation updates a game that already exists.
+func withoutIdenticalLaunchCommandError(errs []string) []string {
+	rest := make([]string, 0, len(errs))
+	for _, e := range errs {
+		if !strings.HasPrefix(e, "Identical launch command") {
+			rest = append(rest, e)
+		}
+	}
+	return rest
+}
+
 // convertValidatorResponseToComment produces appropriate comment based on validator response
 func (s *SiteService) convertValidatorResponseToComment(vr *types.ValidatorResponse, shouldAutofreeze bool) *types.Comment {
 	c := &types.Comment{
@@ -906,6 +886,17 @@ func (s *SiteService) convertValidatorResponseToComment(vr *types.ValidatorRespo
 	}
 	for _, w := range vr.CurationWarnings {
 		message += fmt.Sprintf("⚠️ %s\n", w)
+	}
+
+	// Notes are information for reviewers; they don't keep the bot from
+	// approving.
+	notes := make([]string, 0, len(vr.CurationNotes))
+	for _, n := range vr.CurationNotes {
+		notes = append(notes, "ℹ️ "+n)
+	}
+	if len(notes) > 0 {
+		message += strings.Join(notes, "\n") + "\n"
+		approvalMessage += "\n\n" + strings.Join(notes, "\n")
 	}
 
 	if shouldAutofreeze {

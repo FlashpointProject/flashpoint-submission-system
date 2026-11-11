@@ -1,121 +1,84 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io"
 	"mime/multipart"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
-	"time"
 
+	"github.com/FlashpointProject/flashpoint-submission-system/curation"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCurationValidatorGetTagsHonorsContext(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	defer server.Close()
+// noLookups knows no tags and no launch commands.
+type noLookups struct{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	_, err := NewValidator(server.URL).getTags(ctx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+func (noLookups) TagExists(context.Context, string) (bool, error)           { return false, nil }
+func (noLookups) LaunchCommandExists(context.Context, string) (bool, error) { return false, nil }
+
+func testCurationValidator(t *testing.T) *curationValidator {
+	return NewValidator(curation.New(noLookups{}, t.TempDir(), logrus.New()), curation.NewWikiTags(logrus.New()))
 }
 
-type gatedMultipartFile struct {
-	*bytes.Reader
-	release chan struct{}
-	reads   int
+func curationFixture(name string) string {
+	return filepath.Join("..", "curation", "testdata", name)
 }
 
-func (f *gatedMultipartFile) Read(p []byte) (int, error) {
-	if f.reads == 0 {
-		f.reads++
-		if len(p) > 4 {
-			p = p[:4]
-		}
-		return f.Reader.Read(p)
-	}
-	<-f.release
-	return f.Reader.Read(p)
-}
-
-func (f *gatedMultipartFile) Close() error { return nil }
-
-func TestCurationValidatorApplyEditStreamsMultipartBody(t *testing.T) {
-	receivedFirstBytes := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/edit-meta", r.URL.Path)
-		require.NotEmpty(t, r.URL.Query().Get("path"))
-
-		reader, err := r.MultipartReader()
-		require.NoError(t, err)
-		part, err := reader.NextPart()
-		require.NoError(t, err)
-		require.Equal(t, "logo", part.FormName())
-
-		first := make([]byte, 1)
-		_, err = io.ReadFull(part, first)
-		require.NoError(t, err)
-		close(receivedFirstBytes)
-
-		contents, err := io.ReadAll(part)
-		require.NoError(t, err)
-		require.Equal(t, "streamed-image", string(first)+string(contents))
-
-		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(types.ValidatorEditMetaResponse{Path: "/tmp/edited.7z"}))
-	}))
-	defer server.Close()
-
-	release := make(chan struct{})
-	var logo multipart.File = &gatedMultipartFile{
-		Reader:  bytes.NewReader([]byte("streamed-image")),
-		release: release,
-	}
-
-	result := make(chan error, 1)
-	go func() {
-		validator := NewValidator(server.URL)
-		path, err := validator.ApplyEdit("submission.7z", nil, &logo, nil)
-		if err == nil && (path == nil || *path != "/tmp/edited.7z") {
-			err = io.ErrUnexpectedEOF
-		}
-		result <- err
-	}()
-
-	select {
-	case <-receivedFirstBytes:
-		// The request reached the server while the source file was still blocked.
-	case <-time.After(5 * time.Second):
-		t.Fatal("validator request did not begin before the source file reached EOF")
-	}
-	close(release)
-
-	select {
-	case err := <-result:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("validator request did not finish")
-	}
-}
-
-func TestCurationValidatorApplyEditPreservesMetadataOnlyRequest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseMultipartForm(1<<20))
-		require.True(t, strings.Contains(r.FormValue("metadata"), "Updated"))
-		require.NoError(t, json.NewEncoder(w).Encode(types.ValidatorEditMetaResponse{Path: "/tmp/edited.7z"}))
-	}))
-	defer server.Close()
+func TestCurationValidatorApplyEdit(t *testing.T) {
+	ctx := context.Background()
+	v := testCurationValidator(t)
+	logoFile, err := os.Open(curationFixture("test_curation_valid.zip")) // any bytes do
+	require.NoError(t, err)
+	defer logoFile.Close()
+	var logo multipart.File = logoFile
 
 	title := "Updated"
-	path, err := NewValidator(server.URL).ApplyEdit("submission.7z", &types.EditCurationMeta{Title: &title}, nil, nil)
+	path, err := v.ApplyEdit(ctx, curationFixture("test_curation_valid.7z"), &types.EditCurationMeta{Title: &title}, &logo, nil)
 	require.NoError(t, err)
-	require.Equal(t, "/tmp/edited.7z", *path)
+	defer RemoveRepackFolder(ctx, *path)
+
+	vr, err := v.ProvideArchiveForValidation(ctx, *path)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated", *vr.Meta.Title)
+	require.Len(t, vr.Images, 2)
+	assert.Equal(t, "logo", vr.Images[0].Type)
+}
+
+// A problem with the curation is returned as the curator-facing message only.
+func TestCurationValidatorApplyEditReportsCurationProblems(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broken.zip")
+	require.NoError(t, os.WriteFile(path, []byte("not an archive"), 0o644))
+	title := "Updated"
+	_, err := testCurationValidator(t).ApplyEdit(context.Background(), path, &types.EditCurationMeta{Title: &title}, nil, nil)
+	require.EqualError(t, err, "There seems to a problem with your zip file.")
+}
+
+func TestCurationValidatorApplyEditNeedsAnEdit(t *testing.T) {
+	_, err := testCurationValidator(t).ApplyEdit(context.Background(), curationFixture("test_curation_valid.zip"), nil, nil, nil)
+	require.EqualError(t, err, "at least one field must be provided")
+}
+
+func TestCurationValidatorRepack(t *testing.T) {
+	ctx := context.Background()
+	v := testCurationValidator(t)
+	vr, err := v.ProvideArchiveForRepacking(ctx, curationFixture("test_curation_valid.zip"))
+	require.NoError(t, err)
+	defer RemoveRepackFolder(ctx, *vr.FilePath)
+	assert.Nil(t, vr.Error)
+	assert.FileExists(t, *vr.FilePath)
+	assert.NotNil(t, vr.Meta.LaunchCommand)
+}
+
+// A curation that cannot be packed is an Error in the response, which FPFSS
+// shows as a repack error (as with the Python validator).
+func TestCurationValidatorRepackReportsCurationProblems(t *testing.T) {
+	vr, err := testCurationValidator(t).ProvideArchiveForRepacking(context.Background(), curationFixture("test_curation_missing_meta.zip"))
+	require.NoError(t, err)
+	require.NotNil(t, vr.Error)
+	assert.Contains(t, *vr.Error, "The curation cannot be packed: ")
+	assert.Nil(t, vr.FilePath)
 }

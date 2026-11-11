@@ -58,7 +58,7 @@ func TestSubmissionCacheRebuildSourceTraversal(t *testing.T) {
 }
 
 func rebuildFixtureService(f *sqlFixture) *service.SiteService {
-	return service.NewWithMocks(utils.LogCtx(f.Ctx), f.Maria, nil, nil, nil, "", 0, "", "", true, nil, "", "")
+	return service.NewWithMocks(utils.LogCtx(f.Ctx), f.Maria, nil, nil, nil, nil, 0, "", "", true, nil, "", "")
 }
 
 func TestSubmissionCacheRebuildRepairsAndRepeats(t *testing.T) {

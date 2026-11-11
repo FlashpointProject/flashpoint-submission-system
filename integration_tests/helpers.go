@@ -323,8 +323,11 @@ type validatorMockOptions struct {
 	CurationWarnings    []string
 	CurationErrorsSeq   [][]string
 	CurationWarningsSeq [][]string
+	CurationNotes       []string
 	UploadMeta          *types.CurationMeta
 	RepackMeta          *types.CurationMeta
+	// RepackImages replaces the default logo and screenshot of /pack-path.
+	RepackImages []types.ValidatorResponseImage
 }
 
 func defaultValidatorMockMeta() types.CurationMeta {
@@ -538,119 +541,19 @@ func uploadTestSubmission(t *testing.T, l *logrus.Entry, app *transport.App, fil
 }
 
 func initTestApp(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.DB, postgres *pgxpool.Pool) *transport.App {
-	return initTestAppWithValidatorMockOptions(t, l, conf, maria, postgres, nil)
+	return initTestAppWithValidator(t, l, conf, maria, postgres, newFakeValidator(nil, conf.RepackDir))
 }
 
-func initTestAppWithValidatorMockOptions(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.DB, postgres *pgxpool.Pool, validatorOptions *validatorMockOptions) *transport.App {
+func initTestAppWithValidator(t *testing.T, l *logrus.Entry, conf *config.Config, maria *sql.DB, postgres *pgxpool.Pool, validator service.Validator) *transport.App {
 	authBotMock := &MockDiscordRoleReader{}
 	notifBotMock := &MockDiscordNotificationSender{}
-
-	if validatorOptions == nil {
-		validatorOptions = &validatorMockOptions{}
-	}
-
-	var validatorResponseCounter atomic.Int64
-
-	// Mock Validator
-	validatorMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		l.Infof("Mock Request: %s %s", r.Method, r.URL.String())
-
-		if r.URL.Path == "/tags" {
-			l.Infof("Mock: Handling /tags")
-			json.NewEncoder(w).Encode(types.ValidatorTagResponse{Tags: []types.Tag{}})
-			return
-		}
-
-		path := r.URL.Query().Get("path")
-		if path == "" {
-			path = "/tmp/dummy_path"
-		}
-		l.Infof("Mock: path param=%s", path)
-
-		if r.URL.Path == "/edit-meta" {
-			require.NoError(t, r.ParseMultipartForm(1<<20))
-			defer r.MultipartForm.RemoveAll()
-			content, err := os.ReadFile(path)
-			require.NoError(t, err)
-			edited, err := os.CreateTemp(filepath.Dir(path), "edited-*.7z")
-			require.NoError(t, err)
-			// Simulate a distinct edited archive; the validation mock supplies meta.
-			_, err = edited.Write(append(content, []byte("\n"+r.FormValue("metadata"))...))
-			require.NoError(t, err)
-			require.NoError(t, edited.Close())
-			json.NewEncoder(w).Encode(types.ValidatorEditMetaResponse{Path: edited.Name()})
-			return
-		}
-
-		if r.URL.Path == "/pack-path" {
-			l.Infof("Mock: Handling /pack-path")
-			meta := defaultValidatorMockMeta()
-			if validatorOptions.RepackMeta != nil {
-				meta = *validatorOptions.RepackMeta
-			}
-			resp := types.ValidatorRepackResponse{
-				FilePath: &path,
-				Meta:     meta,
-				Images: []types.ValidatorResponseImage{
-					{Type: "logo", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
-					{Type: "screenshot", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
-				},
-			}
-			b, _ := json.Marshal(resp)
-			l.Infof("Mock JSON: %s", string(b))
-			w.Write(b)
-			return
-		}
-
-		if validatorOptions.BeforeValidate != nil {
-			validatorOptions.BeforeValidate()
-		}
-		l.Infof("Mock: Handling default")
-
-		responseIndex := int(validatorResponseCounter.Add(1) - 1)
-		curationErrors := append([]string(nil), validatorOptions.CurationErrors...)
-		curationWarnings := append([]string(nil), validatorOptions.CurationWarnings...)
-		if len(validatorOptions.CurationErrorsSeq) > 0 {
-			seqIndex := responseIndex
-			if seqIndex >= len(validatorOptions.CurationErrorsSeq) {
-				seqIndex = len(validatorOptions.CurationErrorsSeq) - 1
-			}
-			curationErrors = append([]string(nil), validatorOptions.CurationErrorsSeq[seqIndex]...)
-		}
-		if len(validatorOptions.CurationWarningsSeq) > 0 {
-			seqIndex := responseIndex
-			if seqIndex >= len(validatorOptions.CurationWarningsSeq) {
-				seqIndex = len(validatorOptions.CurationWarningsSeq) - 1
-			}
-			curationWarnings = append([]string(nil), validatorOptions.CurationWarningsSeq[seqIndex]...)
-		}
-
-		// Respond with a valid ValidatorResponse
-		meta := defaultValidatorMockMeta()
-		if validatorOptions.UploadMeta != nil {
-			meta = *validatorOptions.UploadMeta
-		}
-		resp := types.ValidatorResponse{
-			Path:             path,
-			Meta:             meta,
-			CurationErrors:   curationErrors,
-			CurationWarnings: curationWarnings,
-			Images: []types.ValidatorResponseImage{
-				{Type: "logo", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
-				{Type: "screenshot", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="},
-			},
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	t.Cleanup(validatorMock.Close)
-	conf.ValidatorServerURL = validatorMock.URL
 
 	// Create ResumableUploadService
 	rsu, err := resumableuploadservice.New(conf.ResumableUploadDirFullPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { rsu.Close() })
 
-	ss := service.NewWithMocks(l, maria, postgres, authBotMock, notifBotMock, conf.ValidatorServerURL, conf.SessionExpirationSeconds, conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.IsDev, rsu, conf.ArchiveIndexerServerURL, conf.DataPacksDir)
+	ss := service.NewWithMocks(l, maria, postgres, authBotMock, notifBotMock, validator, conf.SessionExpirationSeconds, conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.IsDev, rsu, conf.ArchiveIndexerServerURL, conf.DataPacksDir)
 
 	app := &transport.App{
 		Conf:    conf,
@@ -686,6 +589,14 @@ func setupIntegrationTest(t *testing.T) (*transport.App, *logrus.Entry, context.
 }
 
 func setupIntegrationTestWithValidatorMockOptions(t *testing.T, validatorOptions *validatorMockOptions) (*transport.App, *logrus.Entry, context.Context, database.DAL, database.PGDAL, *sql.DB, *pgxpool.Pool) {
+	return setupIntegrationTestWithValidator(t, func(conf *config.Config, _ *pgxpool.Pool) service.Validator {
+		return newFakeValidator(validatorOptions, conf.RepackDir)
+	})
+}
+
+// setupIntegrationTestWithValidator sets up a test whose app uses the
+// validator newValidator returns.
+func setupIntegrationTestWithValidator(t *testing.T, newValidator func(conf *config.Config, postgres *pgxpool.Pool) service.Validator) (*transport.App, *logrus.Entry, context.Context, database.DAL, database.PGDAL, *sql.DB, *pgxpool.Pool) {
 	ctx := context.Background()
 
 	fmt.Println("setting up environment...")
@@ -706,7 +617,7 @@ func setupIntegrationTestWithValidatorMockOptions(t *testing.T, validatorOptions
 	db := database.NewMysqlDAL(maria)
 	pgdb := database.NewPostgresDAL(postgres)
 
-	app := initTestAppWithValidatorMockOptions(t, l, conf, maria, postgres, validatorOptions)
+	app := initTestAppWithValidator(t, l, conf, maria, postgres, newValidator(conf, postgres))
 
 	return app, l, ctx, db, pgdb, maria, postgres
 }

@@ -117,7 +117,7 @@ func TestSubmissionQuotaConcurrentAdmission(t *testing.T) {
 			secondApp := app
 			if tc.separateService {
 				conf := *config.GetConfig(l)
-				secondApp = initTestAppWithValidatorMockOptions(t, l, &conf, maria, postgres, options)
+				secondApp = initTestAppWithValidator(t, l, &conf, maria, postgres, newFakeValidator(options, conf.RepackDir))
 			}
 			t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 			ctx = context.WithValue(ctx, utils.CtxKeys.Log, l)

@@ -45,3 +45,8 @@ cmd/*
 scripts/*
 tools/*
 snapshot-results/*
+!cmd/curation-archive-sweep/
+
+# macOS
+.DS_Store
+._*

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"io"
 	"mime/multipart"
 	"time"
 
@@ -10,11 +9,10 @@ import (
 )
 
 type Validator interface {
-	Validate(ctx context.Context, file io.Reader, filename string) (*types.ValidatorResponse, error)
-	ApplyEdit(filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) (*string, error)
+	ApplyEdit(ctx context.Context, filePath string, editCurationMeta *types.EditCurationMeta, logoFile *multipart.File, screenshotFile *multipart.File) (*string, error)
 	GetTags(ctx context.Context) ([]types.Tag, error)
-	ProvideArchiveForValidation(filePath string) (*types.ValidatorResponse, error)
-	ProvideArchiveForRepacking(filePath string) (*types.ValidatorRepackResponse, error)
+	ProvideArchiveForValidation(ctx context.Context, filePath string) (*types.ValidatorResponse, error)
+	ProvideArchiveForRepacking(ctx context.Context, filePath string) (*types.ValidatorRepackResponse, error)
 }
 
 type MultipartFileProvider interface {

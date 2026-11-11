@@ -417,11 +417,15 @@ type ValidatorRepackResponse struct {
 	Images   []ValidatorResponseImage `json:"images"`
 }
 
+// ValidatorResponse is the result of validating a curation. CurationNotes
+// are information for reviewers (such as a large size); unlike errors and
+// warnings, they do not keep the bot from approving.
 type ValidatorResponse struct {
 	Filename         string                   `json:"filename"`
 	Path             string                   `json:"path"`
 	CurationErrors   []string                 `json:"curation_errors"`
 	CurationWarnings []string                 `json:"curation_warnings"`
+	CurationNotes    []string                 `json:"curation_notes"`
 	IsExtreme        bool                     `json:"is_extreme"`
 	CurationType     int                      `json:"curation_type"`
 	Meta             CurationMeta             `json:"meta"`
@@ -852,12 +856,6 @@ type RepackError string
 
 func (ce RepackError) Error() string {
 	return fmt.Sprintf("Error repacking submission: %s", string(ce))
-}
-
-type NotEnoughImages string
-
-func (nei NotEnoughImages) Error() string {
-	return fmt.Sprintf("Submission does not have 2 images: has %s", string(nei))
 }
 
 type InvalidTagUpdate struct {
