@@ -8,6 +8,7 @@
 !clients/**
 !config/**
 !constants/**
+!curation/**
 !database/**
 !docs/**
 !logging/**

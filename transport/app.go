@@ -99,6 +99,10 @@ func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Poo
 		l.WithField("admin_password", adminPass).Infoln(fmt.Sprintf("generated admin password: %s", adminPass))
 	}
 
+	if err := service.PrepareRepackDir(l, conf.RepackDir); err != nil {
+		l.Fatal(err)
+	}
+
 	a := &App{
 		Conf: conf,
 		CC: utils.CookieCutter{
@@ -108,7 +112,7 @@ func InitApp(l *logrus.Entry, conf *config.Config, db *sql.DB, pgdb *pgxpool.Poo
 		AuthCodeStorage: NewAuthCodeStorage(),
 		DFStorage:       NewDeviceFlowStorage(conf.HostBaseURL),
 		Service: service.New(l, db, pgdb, authBotSession, notificationBotSession, conf.FlashpointServerID,
-			conf.NotificationChannelID, conf.CurationFeedChannelID, conf.ValidatorServerURL, conf.SessionExpirationSeconds,
+			conf.NotificationChannelID, conf.CurationFeedChannelID, conf.RepackDir, conf.SessionExpirationSeconds,
 			conf.SubmissionsDirFullPath, conf.SubmissionImagesDirFullPath, conf.IsDev,
 			rsu, conf.ArchiveIndexerServerURL,
 			conf.DataPacksDir),

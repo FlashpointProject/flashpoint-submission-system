@@ -128,7 +128,7 @@ func TestSubmissionFilterHTTPValidation(t *testing.T) {
 				decoder.IgnoreUnknownKeys(true)
 				app := &App{
 					decoder: decoder,
-					Service: service.NewWithMocks(entry, db, nil, nil, nil, "", 0, "", "", true, nil, "", ""),
+					Service: service.NewWithMocks(entry, db, nil, nil, nil, nil, 0, "", "", true, nil, "", ""),
 				}
 				req := httptest.NewRequest(http.MethodGet, "/api/"+page+"?"+tc.query, nil)
 				ctx := context.WithValue(req.Context(), utils.CtxKeys.RequestType, constants.RequestJSON)

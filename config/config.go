@@ -21,7 +21,6 @@ type Config struct {
 	SecurecookieHashKeyCurrent    string
 	SecurecookieBlockKeyCurrent   string
 	SessionExpirationSeconds      int64
-	ValidatorServerURL            string
 	DBRootUser                    string
 	DBRootPassword                string
 	DBUser                        string
@@ -41,6 +40,7 @@ type Config struct {
 	ArchiveIndexerServerURL       string
 	SubmissionsDirFullPath        string
 	SubmissionImagesDirFullPath   string
+	RepackDir                     string
 	SystemUid                     int64
 	MinLauncherVersion            string
 	DataPacksDir                  string
@@ -125,7 +125,6 @@ func GetConfig(l *logrus.Entry) *Config {
 		SecurecookieHashKeyCurrent:    EnvString("SECURECOOKIE_HASH_KEY_CURRENT"),
 		SecurecookieBlockKeyCurrent:   EnvString("SECURECOOKIE_BLOCK_KEY_CURRENT"),
 		SessionExpirationSeconds:      EnvInt("SESSION_EXPIRATION_SECONDS"),
-		ValidatorServerURL:            EnvString("VALIDATOR_SERVER_URL"),
 		DBUser:                        EnvString("DB_USER"),
 		DBPassword:                    EnvString("DB_PASSWORD"),
 		DBIP:                          EnvString("DB_IP"),
@@ -143,6 +142,7 @@ func GetConfig(l *logrus.Entry) *Config {
 		ArchiveIndexerServerURL:       EnvString("ARCHIVE_INDEXER_SERVER_URL"),
 		SubmissionsDirFullPath:        EnvString("SUBMISSIONS_DIR_FULL_PATH"),
 		SubmissionImagesDirFullPath:   EnvString("SUBMISSION_IMAGES_DIR_FULL_PATH"),
+		RepackDir:                     EnvString("REPACK_DIR"),
 		SystemUid:                     EnvInt("SYSTEM_UID"),
 		MinLauncherVersion:            EnvString("MIN_LAUNCHER_VERSION"),
 		DataPacksDir:                  EnvString("DATA_PACKS_PATH"),

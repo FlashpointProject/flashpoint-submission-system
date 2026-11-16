@@ -1718,7 +1718,15 @@ func (d *postgresDAL) GetOrCreateTag(dbs PGDBSession, tagName string, tagCategor
 
 func (d *postgresDAL) ApplyGamePatch(dbs PGDBSession, uid int64, game *types.Game, patch *types.GameContentPatch, addApps []*types.CurationAdditionalApp) error {
 	changed(dbs, "metadata")
-	if addApps != nil {
+	// The curation's add apps replace the game's. A curation without any keeps
+	// the existing ones; deleting them all is not something a patch should do.
+	if len(addApps) > 0 {
+		for _, addApp := range addApps {
+			if addApp.ApplicationPath == nil || addApp.LaunchCommand == nil || addApp.Heading == nil {
+				return types.InvalidAddApps{}
+			}
+		}
+
 		// Clear existing add apps
 		_, err := dbs.Tx().Exec(dbs.Ctx(), `DELETE FROM additional_app
 			WHERE parent_game_id = $1`, game.ID)
@@ -2443,6 +2451,28 @@ func GetPlatformID(dbs PGDBSession, name string) (int64, error) {
 		return 0, err
 	}
 	return id, nil
+}
+
+// TagExists reports whether a tag has the name or alias (case-insensitive:
+// tag_alias.name is citext). It implements curation.Lookups.
+func (d *postgresDAL) TagExists(ctx context.Context, name string) (bool, error) {
+	var exists bool
+	err := d.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tag_alias WHERE name = $1)`, name).Scan(&exists)
+	return exists, err
+}
+
+// LaunchCommandExists reports whether a game that is not deleted has the
+// launch command, in the game itself or in one of its data packs (the import
+// writes it to both). It implements curation.Lookups.
+func (d *postgresDAL) LaunchCommandExists(ctx context.Context, launchCommand string) (bool, error) {
+	var exists bool
+	err := d.db.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM game WHERE launch_command = $1 AND deleted = FALSE
+		) OR EXISTS (
+			SELECT 1 FROM game_data JOIN game ON game.id = game_data.game_id
+			WHERE game_data.launch_command = $1 AND game.deleted = FALSE
+		)`, launchCommand).Scan(&exists)
+	return exists, err
 }
 
 func GetTagID(dbs PGDBSession, name string) (int64, error) {

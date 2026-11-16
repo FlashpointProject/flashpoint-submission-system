@@ -48,24 +48,6 @@ services:
     networks:
       fpfssnetwork:
         ipv4_address: 10.50.0.3
-  validator:
-    container_name: ${VALIDATOR_CONTAINER_NAME}
-    restart: unless-stopped
-    image: fpfss-validator:latest
-    platform: linux/amd64
-    build:
-      context: ./validator
-      dockerfile: Dockerfile
-    environment:
-      REPACK_DIR: $REPACK_DIR
-    volumes:
-      - $REPACK_DIR:$REPACK_DIR
-      - $SUBMISSIONS_DIR_FULL_PATH:$SUBMISSIONS_DIR_FULL_PATH
-    ports:
-      - "${VALIDATOR_PORT}:8000"
-    networks:
-      fpfssnetwork:
-        ipv4_address: 10.50.0.4
 
 volumes:
   fpfssdb_data:

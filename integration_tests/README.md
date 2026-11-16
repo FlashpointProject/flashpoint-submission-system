@@ -9,7 +9,9 @@ bash integration_tests/run.sh
 Requirements: Docker with Compose, Bash and Git. Go and database clients run inside
 the image; no local Go installation, database setup, production dumps, validator,
 Discord connection or external submission/image collection is required. The small
-tracked archive and mock validator supply the file fixtures.
+tracked archive and a fake validator (`fake_validator.go`) supply the file
+fixtures; `curation_e2e_test.go` runs the real `curation` package on its
+`curation/testdata` archives.
 
 Select cases using Go test flags:
 
@@ -27,7 +29,7 @@ tests is an error. Arguments are passed to `go test`, so explicit flags can chan
 these defaults.
 
 The build allows only source/test inputs: local `.env`, backups, existing
-`test_data`, results and the validator submodule are excluded. Runtime containers
+`test_data` and results are excluded. Runtime containers
 have an internal network with service-name addressing, no published ports, and no
 Docker socket. The only host bind mount is the invocation's output directory.
 The outer script performs all provisioning and cleanup; Go helpers cannot run

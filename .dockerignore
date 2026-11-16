@@ -29,6 +29,3 @@ snapshot-results/
 integration_tests/results/
 integration_tests/absolute.env
 integration_tests/browser/node_modules/
-
-# Submodule (not part of either image)
-validator/

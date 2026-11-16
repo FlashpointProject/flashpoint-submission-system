@@ -17,15 +17,13 @@ Not tested on Mac, only on Linux.
 * Docker - the application needs a few microservices defined in `dc-db.yml`:
   * MySQL - db for most app data
   * PostgreSQL - db for metadata edits and updating the master list through the [launcher](https://github.com/FlashpointProject/launcher)
-  * [Validator](https://github.com/FlashpointProject/Curation-Validation-Bot) - validates uploads and post about them on Discord
   
 
 ## Setting up the environment
 
-1. Git clone this project, then fetch the submodules: `git submodule update --init --recursive`
+1. Git clone this project
 2. Copy the `.env.template` file as `.env` and fill its details
 3. Create a [Discord app](https://discord.com/developers/applications) for `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` and `AUTH_BOT_TOKEN`, invite the bot to your server and update `.env` with the details for both
-4. Build the validator container inside the validator folder with `docker build . -t fpfss-validator`
 
 **More detailed steps are listed below**.
 

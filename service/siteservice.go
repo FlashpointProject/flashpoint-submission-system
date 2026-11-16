@@ -10,7 +10,6 @@ import (
 	"github.com/FlashpointProject/flashpoint-submission-system/appcache"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -35,6 +34,7 @@ import (
 
 	"github.com/FlashpointProject/flashpoint-submission-system/authbot"
 	"github.com/FlashpointProject/flashpoint-submission-system/constants"
+	"github.com/FlashpointProject/flashpoint-submission-system/curation"
 	"github.com/FlashpointProject/flashpoint-submission-system/database"
 	"github.com/FlashpointProject/flashpoint-submission-system/notificationbot"
 	"github.com/FlashpointProject/flashpoint-submission-system/types"
@@ -154,18 +154,21 @@ type SiteService struct {
 }
 
 func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notificationBotSession *discordgo.Session,
-	flashpointServerID, notificationChannelID, curationFeedChannelID, validatorServerURL string,
+	flashpointServerID, notificationChannelID, curationFeedChannelID, repackDir string,
 	sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
 	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
 	cacheCoordinator := &appcache.Coordinator{}
+	pgdal := database.NewPostgresDAL(pgdb, cacheCoordinator)
+	wikiTags := curation.NewWikiTags(l.WithField("botName", "wikiTags"))
+	wikiTags.FetchInBackground()
 	return &SiteService{
 		cacheCoordinator:          cacheCoordinator,
 		authBot:                   authbot.NewBot(authBotSession, flashpointServerID, l.WithField("botName", "authBot"), isDev),
 		notificationBot:           notificationbot.NewBot(notificationBotSession, flashpointServerID, notificationChannelID, curationFeedChannelID, l.WithField("botName", "notificationBot"), isDev),
 		dal:                       database.NewMysqlDAL(db, cacheCoordinator),
-		pgdal:                     database.NewPostgresDAL(pgdb, cacheCoordinator),
-		validator:                 NewValidator(validatorServerURL),
+		pgdal:                     pgdal,
+		validator:                 NewValidator(curation.New(pgdal, repackDir, l.WithField("botName", "curationValidator")), wikiTags),
 		clock:                     &RealClock{},
 		randomStringProvider:      utils.NewRealRandomStringProvider(),
 		authTokenProvider:         NewAuthTokenProvider(),
@@ -186,7 +189,7 @@ func New(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBotSession, notifi
 }
 
 func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authbot.DiscordRoleReader, notificationBot notificationbot.DiscordNotificationSender,
-	validatorServerURL string, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
+	validator Validator, sessionExpirationSeconds int64, submissionsDir, submissionImagesDir string, isDev bool,
 	rsu *resumableuploadservice.ResumableUploadService, archiveIndexerServerURL, dataPacksDir string) *SiteService {
 
 	cacheCoordinator := &appcache.Coordinator{}
@@ -196,7 +199,7 @@ func NewWithMocks(l *logrus.Entry, db *sql.DB, pgdb *pgxpool.Pool, authBot authb
 		notificationBot:           notificationBot,
 		dal:                       database.NewMysqlDAL(db, cacheCoordinator),
 		pgdal:                     database.NewPostgresDAL(pgdb, cacheCoordinator),
-		validator:                 NewValidator(validatorServerURL),
+		validator:                 validator,
 		clock:                     &RealClock{},
 		randomStringProvider:      utils.NewRealRandomStringProvider(),
 		authTokenProvider:         NewAuthTokenProvider(),
@@ -974,11 +977,11 @@ func (s *SiteService) ApplySubmissionMetaEdit(ctx context.Context, sid int64, ed
 		return fmt.Errorf("submission file not found?")
 	}
 
-	newFilePath, err := s.validator.ApplyEdit(subFilePath, editCurationMeta, logoFile, screenshotFile)
+	newFilePath, err := s.validator.ApplyEdit(ctx, subFilePath, editCurationMeta, logoFile, screenshotFile)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(*newFilePath)
+	defer RemoveRepackFolder(ctx, *newFilePath)
 
 	stat, err := os.Stat(*newFilePath)
 	if err != nil {
@@ -2889,7 +2892,7 @@ func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission 
 
 	// Repack the curation via the validator and get fresh metadata
 	originalPath := fmt.Sprintf("%s/%s", subDirFullPath, sf.CurrentFilename)
-	vr, err := s.validator.ProvideArchiveForRepacking(originalPath)
+	vr, err := s.validator.ProvideArchiveForRepacking(ctx, originalPath)
 	if err != nil {
 		return nil, err
 	}
@@ -2907,50 +2910,68 @@ func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission 
 
 	// If UUID is given, check if game exists already
 	var game *types.Game
-	var gameData *types.GameData
-	new_game := false
 	if vr.Meta.UUID != nil && submission.GameExists {
 		game, _ = s.pgdal.GetGame(dbs, *vr.Meta.UUID)
-		if game != nil {
-			// If body exists, apply patch in metadata
-			if r.ContentLength > 0 {
-				var patch *types.GameContentPatch
-				err = json.NewDecoder(r.Body).Decode(&patch)
-				if err != nil {
-					return nil, err
-				}
+	}
+	newGame := game == nil
 
-				err := s.pgdal.ApplyGamePatch(dbs, utils.UserID(ctx), game, patch, vr.Meta.AdditionalApps)
-				if err != nil {
-					return nil, err
-				}
-			} else if vr.Meta.AdditionalApps != nil {
-				// No body, just patch in add apps
-				err := s.pgdal.ApplyGamePatch(dbs, utils.UserID(ctx), game, nil, vr.Meta.AdditionalApps)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			// Game exists, add new game data instead
-			data, err := s.pgdal.AddGameData(dbs, utils.UserID(ctx), game.ID, vr)
-			if err != nil {
-				return nil, err
-			}
-			game.Data = append(game.Data, data)
-			gameData = data
+	// Check everything the import needs before anything is written.
+	if vr.Meta.ApplicationPath == nil || vr.Meta.LaunchCommand == nil {
+		return nil, types.MissingLaunchParams{}
+	}
+	var logo, screenshot []byte
+	if newGame {
+		if vr.Meta.Tags == nil || vr.Meta.Platform == nil {
+			return nil, perr("cannot add to Flashpoint: the curation meta has no Tags or no Platforms", http.StatusBadRequest)
+		}
+		logo, screenshot, err = curationLogoAndScreenshot(vr.Images)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	if game == nil {
-		// New game, import all info
-		new_game = true
+	// Files written here are removed again unless the transaction commits.
+	var written []string
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		for _, path := range written {
+			if err := os.Remove(path); err != nil {
+				utils.LogCtx(ctx).Error(err)
+			}
+		}
+	}()
+
+	var gameData *types.GameData
+	if newGame {
 		game, err = s.pgdal.AddSubmissionFromValidator(dbs, utils.UserID(ctx), vr, submission.IsFrozen)
 		if err != nil {
 			utils.LogCtx(ctx).Error(err)
 			return nil, err
 		}
 		gameData = game.Data[0]
+	} else {
+		var patch *types.GameContentPatch
+		// The "apply content patch" page posts the chosen metadata as JSON. A
+		// form-encoded comment has its body consumed by ParseForm already: EOF.
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil && err != io.EOF {
+			return nil, perr("invalid content patch: "+err.Error(), http.StatusBadRequest)
+		}
+		addApps := curationAdditionalApps(&vr.Meta)
+		if patch != nil || len(addApps) > 0 {
+			if err := s.pgdal.ApplyGamePatch(dbs, utils.UserID(ctx), game, patch, addApps); err != nil {
+				return nil, err
+			}
+		}
+
+		// Game exists, add new game data instead
+		gameData, err = s.pgdal.AddGameData(dbs, utils.UserID(ctx), game.ID, vr)
+		if err != nil {
+			return nil, err
+		}
+		game.Data = append(game.Data, gameData)
 	}
 
 	msTime := gameData.DateAdded.UnixMilli()
@@ -2987,6 +3008,7 @@ func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission 
 	if err != nil {
 		return nil, err
 	}
+	written = append(written, newFileName)
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, srcFile) // check first var for number of bytes copied
@@ -2999,40 +3021,20 @@ func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission 
 		return nil, err
 	}
 
-	if new_game {
-		// Copy image data to new images
-		if len(vr.Images) < 2 {
-			return nil, types.NotEnoughImages(strconv.Itoa(len(vr.Images)))
-		}
-
-		logo := vr.Images[0]
-		logoFilePath := fmt.Sprintf(`%s/Logos/%s/%s/%s.png`, imagesDir, game.ID[0:2], game.ID[2:4], game.ID)
-		decodedLogo, err := base64.StdEncoding.DecodeString(logo.Data)
-		if err != nil {
-			return nil, err
-		}
-		err = os.MkdirAll(filepath.Dir(logoFilePath), 0777)
-		if err != nil {
-			return nil, err
-		}
-		err = os.WriteFile(logoFilePath, decodedLogo, 0644)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		ss := vr.Images[1]
-		ssFilePath := fmt.Sprintf(`%s/Screenshots/%s/%s/%s.png`, imagesDir, game.ID[0:2], game.ID[2:4], game.ID)
-		decodedScreenshot, err := base64.StdEncoding.DecodeString(ss.Data)
-		if err != nil {
-			return nil, err
-		}
-		err = os.MkdirAll(filepath.Dir(ssFilePath), 0777)
-		if err != nil {
-			return nil, err
-		}
-		err = os.WriteFile(ssFilePath, decodedScreenshot, 0644)
-		if err != nil {
-			log.Fatal(err)
+	if newGame {
+		images := []struct {
+			dir  string
+			data []byte
+		}{{"Logos", logo}, {"Screenshots", screenshot}}
+		for _, image := range images {
+			path := fmt.Sprintf(`%s/%s/%s/%s/%s.png`, imagesDir, image.dir, game.ID[0:2], game.ID[2:4], game.ID)
+			if err := os.MkdirAll(filepath.Dir(path), 0777); err != nil {
+				return nil, err
+			}
+			written = append(written, path)
+			if err := os.WriteFile(path, image.data, 0644); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -3041,8 +3043,49 @@ func (s *SiteService) AddSubmissionToFlashpoint(ctx context.Context, submission 
 		utils.LogCtx(dbs.Ctx()).Error(err)
 		return nil, err
 	}
+	committed = true
 
 	return &game.ID, nil
+}
+
+// curationLogoAndScreenshot picks the logo and screenshot by type. The
+// validator leaves the logo out when the archive has none, so position alone
+// is not enough.
+func curationLogoAndScreenshot(images []types.ValidatorResponseImage) (logo, screenshot []byte, err error) {
+	for _, image := range images {
+		data, err := base64.StdEncoding.DecodeString(image.Data)
+		if err != nil {
+			return nil, nil, err
+		}
+		switch image.Type {
+		case "logo":
+			logo = data
+		case "screenshot":
+			screenshot = data
+		}
+	}
+	if logo == nil || screenshot == nil {
+		return nil, nil, perr("cannot add to Flashpoint: the curation needs both a logo and a screenshot", http.StatusBadRequest)
+	}
+	return logo, screenshot, nil
+}
+
+// curationAdditionalApps returns all additional applications of a curation.
+// The validator moves Extras and Message out of the list into their own
+// fields; they are additional applications in the database.
+func curationAdditionalApps(meta *types.CurationMeta) []*types.CurationAdditionalApp {
+	apps := make([]*types.CurationAdditionalApp, 0, len(meta.AdditionalApps)+2)
+	if meta.Extras != nil {
+		apps = append(apps, &types.CurationAdditionalApp{
+			Heading: utils.StrPtr("Extras"), ApplicationPath: utils.StrPtr(":extras:"), LaunchCommand: meta.Extras,
+		})
+	}
+	if meta.Message != nil {
+		apps = append(apps, &types.CurationAdditionalApp{
+			Heading: utils.StrPtr("Message"), ApplicationPath: utils.StrPtr(":message:"), LaunchCommand: meta.Message,
+		})
+	}
+	return append(apps, meta.AdditionalApps...)
 }
 
 func RemoveRepackFolder(ctx context.Context, filePath string) {
